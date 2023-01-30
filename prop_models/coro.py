@@ -16,12 +16,14 @@ image = PlaneType.image
 import cupy as cp
 import cupyx.scipy.ndimage
 
+from .import misc
+
 class CORO():
 
     def __init__(self, 
                  wavelength=None, 
                  npix=128, 
-                 oversample=8,
+                 oversample=4,
                  npsf=400,
                  psf_pixelscale=4.63e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None,
@@ -36,8 +38,7 @@ class CORO():
                  dm_ref=np.zeros((34,34)),
                  dm_inf=None, # defaults to bmc_inf.fits
                  im_norm=None,
-                 OPD=None,
-                 RETRIEVED=None,
+                 APODIZER=None,
                  FPM=None,
                  LYOT=None):
         
@@ -45,7 +46,7 @@ class CORO():
         
         self.is_model = True
         
-        self.wavelength_c = 632.8e-9*u.m
+        self.wavelength_c = 750*u.m
         if wavelength is None: 
             self.wavelength = self.wavelength_c
         else: 
@@ -71,11 +72,8 @@ class CORO():
         
         self.offset = offset
         self.use_opds = use_opds
-        self.use_aps = use_aps
-        self.fpm_defocus = fpm_defocus
         
-        self.OPD = poppy.ScalarTransmission(name='OPD Place-holder') if OPD is None else OPD
-        self.RETRIEVED = poppy.ScalarTransmission(name='Phase Retrieval Place-holder') if RETRIEVED is None else RETRIEVED
+        self.APODIZER = poppy.ScalarTransmission(name='Apodizer Place-holder') if APODIZER is None else APODIZER
         self.FPM = poppy.ScalarTransmission(name='FPM Place-holder') if FPM is None else FPM
         self.LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if LYOT is None else LYOT
         
@@ -84,26 +82,24 @@ class CORO():
         self.im_norm = im_norm
         
         self.init_dm()
-        self.dm_ref = dm_ref
-        if self.use_opds:
-            self.init_opds()
+        
+        self.oap1_diam = 12.7*u.mm
+        self.oap2_diam = 12.7*u.mm
+        self.oap3_diam = 12.7*u.mm
+        self.oap4_diam = 12.7*u.mm
+        self.oap5_diam = 12.7*u.mm
+        
+        self.fl_oap1 = 200*u.mm
+        self.fl_oap2 = 200*u.mm
+        self.fl_oap3 = 500*u.mm
+        self.fl_oap4 = 350*u.mm
+        self.fl_oap5 = 200*u.mm
+        
+        if self.use_opds: self.init_opds()
+        self.init_fosys()
         
     def getattr(self, attr):
         return getattr(self, attr)
-    
-    def copy_model_settings(self, nactors=1):
-        settings = []
-        for i in range(nactors):
-            settings.append({'wavelength':self.wavelength, 
-                              'npix':self.npix, 
-                                'oversample':self.oversample, 
-                                'npsf':self.npsf, 
-                                'psf_pixelscale':self.psf_pixelscale,   
-                                'use_opds':self.use_opds, 
-                                'fpm_defocus':self.fpm_defocus,
-                                'FPM':copy.copy(self.FPM), 
-                                'LYOT':copy.copy(self.LYOT)})
-        return settings
 
     def init_dm(self):
         self.Nact = 34
@@ -121,11 +117,6 @@ class CORO():
         
         self.dm_zernikes = poppy.zernike.arbitrary_basis(cp.array(self.dm_mask), nterms=15, outside=0).get()
         
-        bad_acts = [(21,25)]
-        self.bad_acts = []
-        for act in bad_acts:
-            self.bad_acts.append(act[1]*self.Nact + act[0])
-
         self.DM = poppy.ContinuousDeformableMirror(dm_shape=(self.Nact,self.Nact), name='DM', 
                                                    actuator_spacing=self.act_spacing, 
                                                    influence_func=self.dm_inf,
@@ -162,53 +153,44 @@ class CORO():
         return roc/2 + sag
     
     def init_fosys(self):
-        
-        oap0 = poppy.QuadraticLens(fl_oap0, name='OAP0')
-        
-        self.oap1_diam = 12.7*u.mm
-        self.oap2_diam = 12.7*u.mm
-        self.oap3_diam = 12.7*u.mm
-        self.oap4_diam = 12.7*u.mm
-        self.oap5_diam = 12.7*u.mm
-        
-        fl_oap1 = 200*u.mm
-        fl_oap2 = 200*u.mm
-        fl_oap3 = 500*u.mm
-        fl_oap4 = 350*u.mm
-        fl_oap5 = 200*u.mm
-        
-        oap1 = poppy.QuadraticLens(fl_oap1, name='OAP1')
-        oap2 = poppy.QuadraticLens(fl_oap2, name='OAP2')
-        oap3 = poppy.QuadraticLens(fl_oap3, name='OAP3')
-        oap4 = poppy.QuadraticLens(fl_oap4, name='OAP4')
-        oap5 = poppy.QuadraticLens(fl_oap5, name='OAP5')
+        oap1 = poppy.QuadraticLens(self.fl_oap1, name='OAP1')
+        oap2 = poppy.QuadraticLens(self.fl_oap2, name='OAP2')
+        oap3 = poppy.QuadraticLens(self.fl_oap3, name='OAP3')
+        oap4 = poppy.QuadraticLens(self.fl_oap4, name='OAP4')
+        oap5 = poppy.QuadraticLens(self.fl_oap5, name='OAP5')
         
         # define FresnelOpticalSystem and add optics
         self.pupil_diam = 10.2*u.mm
         fosys = poppy.FresnelOpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, beam_ratio=1/self.oversample)
         
+        fosys.add_optic(poppy.CircularAperture(radius=self.pupil_diam/2)) 
         fosys.add_optic(self.DM)
-        fosys.add_optic(oap1, distance=fl_oap1)
-        fosys.add_optic(self.oap1_opd)
-        fosys.add_optic(oap2, distance=fl_oap2)
-        fosys.add_optic(self.oap2_opd)
-        fosys.add_optic(oap3, distance=fl_oap3)
-        fosys.add_optic(self.oap3_opd)
-        fosys.add_optic(oap4, distance=fl_oap4)
-        fosys.add_optic(self.oap4_opd)
-        fosys.add_optic(oap5, distance=fl_oap5)
-        fosys.add_optic(self.oap5_opd)
+        fosys.add_optic(oap1)
+        if self.use_opds: fosys.add_optic(self.oap1_opd)
+        fosys.add_optic(poppy.ScalarTransmission('Int Focal Plane'), distance=self.fl_oap1)
+        fosys.add_optic(oap2, distance=self.fl_oap2)
+        if self.use_opds: fosys.add_optic(self.oap2_opd)
+        fosys.add_optic(self.APODIZER, distance=self.fl_oap2)
+        fosys.add_optic(oap3, distance=self.fl_oap3)
+        if self.use_opds: fosys.add_optic(self.oap3_opd)
+        fosys.add_optic(poppy.CircularAperture('FPM'), distance=self.fl_oap3)
+        fosys.add_optic(oap4, distance=self.fl_oap4)
+        if self.use_opds: fosys.add_optic(self.oap4_opd)
+        fosys.add_optic(self.LYOT, distance=self.fl_oap4)
+        fosys.add_optic(oap5, distance=self.fl_oap5)
+        if self.use_opds: fosys.add_optic(self.oap5_opd)
+        fosys.add_optic(poppy.ScalarTransmission('Image Plane'), distance=self.fl_oap5)
         
         self.fosys = fosys
         
     def init_opds(self):
         seed = 123456
 
-        self.oap1_opd = poppy.StatisticalPSDWFE('OAP1 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, seed=seed)
-        self.oap2_opd = poppy.StatisticalPSDWFE('OAP2 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, seed=seed)
-        self.oap3_opd = poppy.StatisticalPSDWFE('OAP3 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, seed=seed)
-        self.oap4_opd = poppy.StatisticalPSDWFE('OAP4 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, seed=seed)
-        self.oap5_opd = poppy.StatisticalPSDWFE('OAP5 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, seed=seed)
+        self.oap1_opd = poppy.StatisticalPSDWFE('OAP1 OPD', index=3.0, wfe=10*u.nm, radius=self.oap1_diam/2, seed=seed)
+        self.oap2_opd = poppy.StatisticalPSDWFE('OAP2 OPD', index=3.0, wfe=10*u.nm, radius=self.oap2_diam/2, seed=seed)
+        self.oap3_opd = poppy.StatisticalPSDWFE('OAP3 OPD', index=3.0, wfe=10*u.nm, radius=self.oap3_diam/2, seed=seed)
+        self.oap4_opd = poppy.StatisticalPSDWFE('OAP4 OPD', index=3.0, wfe=10*u.nm, radius=self.oap4_diam/2, seed=seed)
+        self.oap5_opd = poppy.StatisticalPSDWFE('OAP5 OPD', index=3.0, wfe=10*u.nm, radius=self.oap5_diam/2, seed=seed)
         
     def init_inwave(self):
         inwave = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
@@ -220,26 +202,7 @@ class CORO():
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_fosys()
         self.init_inwave()
-        psf, wfs = self.fosys.calc_psf(inwave=self.inwave, return_intermediates=True)
-
-        if not self.use_opds and not self.use_aps:
-            self.fosys_names = ['Pupil Stop', 'Injected OPD',
-                                'Flat 1', 'OAP1', 'OAP2',
-                                'DM', 'Retrieval Data', 
-                                'OAP3',
-                                'FPM', 
-                                # 'Singularity', 
-                                'Flat 2', 'Lens',  
-                                'Lyot Plane', 'Lyot Stop',
-                                'SciCam Lens', 'Image Plane']
-        elif self.use_opds and not self.use_aps:
-            self.fosys_names = ['Pupil Stop', 'Flat 1 OPD', 'Injected OPD', 'Flat 1', 'Flat 2 OPD', 
-                                'OAP1', 'OAP1 OPD', 'OAP2', 'OAP2 OPD',
-                                'DM', 'OAP3', 'OAP3 OPD',
-                                'FPM', 'Flat 2', 'Lens',  
-                                'Lyot Plane', 'Lyot Stop',
-                                'SciCam Lens', 'Image Plane']
-            
+        _, wfs = self.fosys.calc_psf(inwave=self.inwave, return_intermediates=True)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
         
         return wfs
@@ -249,19 +212,18 @@ class CORO():
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_fosys()
         self.init_inwave()
-        psf, wfs = self.fosys.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
-
-        if self.im_norm is not None:
-            wfs[-1].wavefront *= np.sqrt(self.im_norm)/abs(wfs[-1].wavefront).max()
+        _, wf = self.fosys.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
         
-        wavefront = wfs[-1].wavefront
+        # Rotate the wavefront data
+        wavefront = wf[-1].wavefront
         wavefront_r = cupyx.scipy.ndimage.rotate(cp.real(wavefront), angle=-self.det_rotation, reshape=False, order=0)
         wavefront_i = cupyx.scipy.ndimage.rotate(cp.imag(wavefront), angle=-self.det_rotation, reshape=False, order=0)
         
-        wfs[-1].wavefront = wavefront_r + 1j*wavefront_i
+        wf[-1].wavefront = wavefront_r + 1j*wavefront_i
         
-        resamped_wf = self.interp_wf(wfs[-1])
+        # Interpolate wavefront data to desired platescale
+        resamped_wf = self.interp_wf(wf[-1])
         
         resamped_wf /= np.sqrt(self.normalization)
 

@@ -8,7 +8,7 @@ theSystem = theApplication.PrimarySystem;
 
 % path to zos file
 path = pwd;
-file = 'jwst_segmented.zos';
+file = 'luvoir_B_reduced.zos';
 
 % load zos file
 zos_path = strcat(path, '\', file);    
@@ -33,7 +33,7 @@ WFMap = theSystem.Analyses.New_Analysis(ZOSAPI.Analysis.AnalysisIDM.WavefrontMap
 % adjust WFMap settings
 WFMapSettings = WFMap.GetSettings();
 WFMapSettings.Field.SetFieldNumber(1);
-WFMapSettings.Sampling = ZOSAPI.Analysis.SampleSizes.S_512x512; % increase sampling
+WFMapSettings.Sampling = ZOSAPI.Analysis.SampleSizes.S_2048x2048; % increase sampling
 
 % apply settings 
 WFMap.ApplyAndWaitForCompletion();

@@ -16,14 +16,12 @@ image = PlaneType.image
 import cupy as cp
 import cupyx.scipy.ndimage
 
-import misc
-
-class SCOOBM():
+class CORO():
 
     def __init__(self, 
                  wavelength=None, 
                  npix=128, 
-                 oversample=2048/128,
+                 oversample=8,
                  npsf=400,
                  psf_pixelscale=4.63e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None,
@@ -167,23 +165,52 @@ class SCOOBM():
         
         oap0 = poppy.QuadraticLens(fl_oap0, name='OAP0')
         
+        self.oap1_diam = 12.7*u.mm
+        self.oap2_diam = 12.7*u.mm
+        self.oap3_diam = 12.7*u.mm
+        self.oap4_diam = 12.7*u.mm
+        self.oap5_diam = 12.7*u.mm
+        
+        fl_oap1 = 200*u.mm
+        fl_oap2 = 200*u.mm
+        fl_oap3 = 500*u.mm
+        fl_oap4 = 350*u.mm
+        fl_oap5 = 200*u.mm
+        
+        oap1 = poppy.QuadraticLens(fl_oap1, name='OAP1')
+        oap2 = poppy.QuadraticLens(fl_oap2, name='OAP2')
+        oap3 = poppy.QuadraticLens(fl_oap3, name='OAP3')
+        oap4 = poppy.QuadraticLens(fl_oap4, name='OAP4')
+        oap5 = poppy.QuadraticLens(fl_oap5, name='OAP5')
         
         # define FresnelOpticalSystem and add optics
-        self.pupil_diam = 6.75*u.mm
+        self.pupil_diam = 10.2*u.mm
         fosys = poppy.FresnelOpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, beam_ratio=1/self.oversample)
         
-
+        fosys.add_optic(self.DM)
+        fosys.add_optic(oap1, distance=fl_oap1)
+        fosys.add_optic(self.oap1_opd)
+        fosys.add_optic(oap2, distance=fl_oap2)
+        fosys.add_optic(self.oap2_opd)
+        fosys.add_optic(oap3, distance=fl_oap3)
+        fosys.add_optic(self.oap3_opd)
+        fosys.add_optic(oap4, distance=fl_oap4)
+        fosys.add_optic(self.oap4_opd)
+        fosys.add_optic(oap5, distance=fl_oap5)
+        fosys.add_optic(self.oap5_opd)
         
         self.fosys = fosys
         
     def init_opds(self):
         seed = 123456
 
-        self.oap0_opd = poppy.StatisticalPSDWFE('OAP0 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, see=seed)
-    
-    def init_inwave(self):
-        self.pupil_diam = 6.8*u.mm
+        self.oap1_opd = poppy.StatisticalPSDWFE('OAP1 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, seed=seed)
+        self.oap2_opd = poppy.StatisticalPSDWFE('OAP2 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, seed=seed)
+        self.oap3_opd = poppy.StatisticalPSDWFE('OAP3 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, seed=seed)
+        self.oap4_opd = poppy.StatisticalPSDWFE('OAP4 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, seed=seed)
+        self.oap5_opd = poppy.StatisticalPSDWFE('OAP5 OPD', index=3.0, wfe=10*u.nm, radius=oap0_diam/2, seed=seed)
         
+    def init_inwave(self):
         inwave = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
                                         npix=self.npix, oversample=self.oversample)
         self.inwave = inwave

@@ -1,0 +1,6 @@
+
+# Ignore .ZDA files
+*.ZDA
+
+# Ignore .ipynb_checkpoints
+.ipynb_checkpoints/

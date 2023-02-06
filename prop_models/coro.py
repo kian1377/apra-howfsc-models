@@ -22,19 +22,12 @@ class CORO():
 
     def __init__(self, 
                  wavelength=None, 
-                 npix=128, 
-                 oversample=4,
+                 npix=256, 
+                 oversample=2,
                  npsf=400,
                  psf_pixelscale=4.63e-6*u.m/u.pix,
-                 psf_pixelscale_lamD=None,
-                 texp=0.00001, 
-                 normalization=1,
-                 interp_order=3,
-                 det_rotation=0,
-                 offset=(0,0),  
+                 psf_pixelscale_lamD=None, 
                  use_opds=False,
-                 use_aps=False,
-                 fpm_defocus=0,
                  dm_ref=np.zeros((34,34)),
                  dm_inf=None, # defaults to bmc_inf.fits
                  im_norm=None,
@@ -63,24 +56,14 @@ class CORO():
         else:
             self.psf_pixelscale_lamD = psf_pixelscale_lamD
             self.psf_pixelscale = 4.63e-6*u.m/u.pix / self.psf_pixelscale_lamD/(1/2.75)
-            
-        self.interp_order = interp_order
-        self.det_rotation = det_rotation
-        self.normalization = normalization
         
         self.dm_inf = str(esc_coro_suite.data_dir/'bmc_inf.fits') if dm_inf is None else dm_inf
         
-        self.offset = offset
         self.use_opds = use_opds
         
         self.APODIZER = poppy.ScalarTransmission(name='Apodizer Place-holder') if APODIZER is None else APODIZER
         self.FPM = poppy.ScalarTransmission(name='FPM Place-holder') if FPM is None else FPM
         self.LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if LYOT is None else LYOT
-        
-        self.texp = texp # between 0.1ms (0.0001s) and 0.01s
-        
-        self.im_norm = im_norm
-        
         self.init_dm()
         
         self.oap1_diam = 12.7*u.mm
@@ -165,7 +148,7 @@ class CORO():
         
         fosys.add_optic(poppy.CircularAperture(radius=self.pupil_diam/2)) 
         fosys.add_optic(self.DM)
-        fosys.add_optic(oap1)
+        fosys.add_optic(oap1, distance=self.fl_oap1)
         if self.use_opds: fosys.add_optic(self.oap1_opd)
         fosys.add_optic(poppy.ScalarTransmission('Int Focal Plane'), distance=self.fl_oap1)
         fosys.add_optic(oap2, distance=self.fl_oap2)
@@ -183,8 +166,7 @@ class CORO():
         
         self.fosys = fosys
         
-    def init_opds(self):
-        seed = 123456
+    def init_opds(self, seed=123456):
 
         self.oap1_opd = poppy.StatisticalPSDWFE('OAP1 OPD', index=3.0, wfe=10*u.nm, radius=self.oap1_diam/2, seed=seed)
         self.oap2_opd = poppy.StatisticalPSDWFE('OAP2 OPD', index=3.0, wfe=10*u.nm, radius=self.oap2_diam/2, seed=seed)
@@ -232,7 +214,7 @@ class CORO():
     def snap(self): # method for getting the PSF in photons
         self.init_fosys()
         self.init_inwave()
-        psf, wfs = self.fosys.calc_psf(inwave=self.inwave, return_intermediates=False, return_final=True)
+        _, wfs = self.fosys.calc_psf(inwave=self.inwave, return_intermediates=False, return_final=True)
         
         wavefront = wfs[-1].wavefront
         wavefront_r = cupyx.scipy.ndimage.rotate(cp.real(wavefront), angle=-self.det_rotation, reshape=False, order=0)

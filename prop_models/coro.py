@@ -23,13 +23,14 @@ class CORO():
     def __init__(self, 
                  wavelength=None, 
                  npix=256, 
-                 oversample=2,
-                 npsf=400,
-                 psf_pixelscale=4.63e-6*u.m/u.pix,
+                 oversample=4,
+                 npsf=200,
+                 psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
                  use_opds=False,
+                 detector_rotation=0, 
                  dm_ref=np.zeros((34,34)),
-                 dm_inf=None, # defaults to bmc_inf.fits
+                 dm_inf=None, # defaults to inf.fits
                  im_norm=None,
                  APODIZER=None,
                  FPM=None,
@@ -39,7 +40,7 @@ class CORO():
         
         self.is_model = True
         
-        self.wavelength_c = 750*u.m
+        self.wavelength_c = 750e-9*u.m
         if wavelength is None: 
             self.wavelength = self.wavelength_c
         else: 
@@ -51,13 +52,12 @@ class CORO():
         self.npsf = npsf
         if psf_pixelscale_lamD is None: # overrides psf_pixelscale this way
             self.psf_pixelscale = psf_pixelscale
-#             self.psf_pixelscale_lamD = (1/2.75) * self.psf_pixelscale.to(u.m/u.pix).value/4.63e-6
-            self.psf_pixelscale_lamD = (1/(5)) * self.psf_pixelscale.to(u.m/u.pix).value/4.63e-6
+            self.psf_pixelscale_lamD = (1/4.2) * self.psf_pixelscale.to(u.m/u.pix).value/5e-6
         else:
             self.psf_pixelscale_lamD = psf_pixelscale_lamD
-            self.psf_pixelscale = 4.63e-6*u.m/u.pix / self.psf_pixelscale_lamD/(1/2.75)
+            self.psf_pixelscale = 5e-6*u.m/u.pix / self.psf_pixelscale_lamD/(1/4.25)
         
-        self.dm_inf = str(esc_coro_suite.data_dir/'bmc_inf.fits') if dm_inf is None else dm_inf
+        self.dm_inf = 'inf.fits' if dm_inf is None else dm_inf
         
         self.use_opds = use_opds
         
@@ -77,6 +77,8 @@ class CORO():
         self.fl_oap3 = 500*u.mm
         self.fl_oap4 = 350*u.mm
         self.fl_oap5 = 200*u.mm
+        
+        self.det_rotation = detector_rotation
         
         if self.use_opds: self.init_opds()
         self.init_fosys()
@@ -118,7 +120,7 @@ class CORO():
         return self.DM.surface.get()
     
     def show_dm(self):
-        wf = poppy.FresnelWavefront(beam_radius=self.dm_active_diam/2, npix=256, oversample=1)
+        wf = poppy.FresnelWavefront(beam_radius=self.dm_active_diam/2, npix=self.npix, oversample=1)
         misc.myimshow2(self.get_dm(), self.DM.get_opd(wf), 'DM Command', 'DM Surface',
                        pxscl2=wf.pixelscale.to(u.mm/u.pix))
     
@@ -142,6 +144,12 @@ class CORO():
         oap4 = poppy.QuadraticLens(self.fl_oap4, name='OAP4')
         oap5 = poppy.QuadraticLens(self.fl_oap5, name='OAP5')
         
+        oap1_ap = poppy.CircularAperture(radius=self.oap1_diam/2)
+        oap2_ap = poppy.CircularAperture(radius=self.oap2_diam/2)
+        oap3_ap = poppy.CircularAperture(radius=self.oap3_diam/2)
+        oap4_ap = poppy.CircularAperture(radius=self.oap4_diam/2)
+        oap5_ap = poppy.CircularAperture(radius=self.oap5_diam/2)
+        
         # define FresnelOpticalSystem and add optics
         self.pupil_diam = 10.2*u.mm
         fosys = poppy.FresnelOpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, beam_ratio=1/self.oversample)
@@ -149,18 +157,24 @@ class CORO():
         fosys.add_optic(poppy.CircularAperture(radius=self.pupil_diam/2)) 
         fosys.add_optic(self.DM)
         fosys.add_optic(oap1, distance=self.fl_oap1)
+        fosys.add_optic(oap1_ap)
         if self.use_opds: fosys.add_optic(self.oap1_opd)
         fosys.add_optic(poppy.ScalarTransmission('Int Focal Plane'), distance=self.fl_oap1)
         fosys.add_optic(oap2, distance=self.fl_oap2)
+        fosys.add_optic(oap2_ap)
         if self.use_opds: fosys.add_optic(self.oap2_opd)
         fosys.add_optic(self.APODIZER, distance=self.fl_oap2)
         fosys.add_optic(oap3, distance=self.fl_oap3)
+        fosys.add_optic(oap3_ap)
         if self.use_opds: fosys.add_optic(self.oap3_opd)
-        fosys.add_optic(poppy.CircularAperture('FPM'), distance=self.fl_oap3)
+        fosys.add_optic(self.FPM, distance=self.fl_oap3)
         fosys.add_optic(oap4, distance=self.fl_oap4)
+        fosys.add_optic(oap4_ap)
         if self.use_opds: fosys.add_optic(self.oap4_opd)
-        fosys.add_optic(self.LYOT, distance=self.fl_oap4)
+        fosys.add_optic(poppy.ScalarTransmission('Lyot Stop Plane'), distance=self.fl_oap4)
+        fosys.add_optic(self.LYOT)
         fosys.add_optic(oap5, distance=self.fl_oap5)
+        fosys.add_optic(oap5_ap)
         if self.use_opds: fosys.add_optic(self.oap5_opd)
         fosys.add_optic(poppy.ScalarTransmission('Image Plane'), distance=self.fl_oap5)
         
@@ -168,7 +182,7 @@ class CORO():
         
     def init_opds(self, seed=123456):
 
-        self.oap1_opd = poppy.StatisticalPSDWFE('OAP1 OPD', index=3.0, wfe=10*u.nm, radius=self.oap1_diam/2, seed=seed)
+        self.oap1_opd = poppy.StatisticalPSDWFE('OAP1 OPD', index=3.0, wfe=50*u.nm, radius=self.oap1_diam/2, seed=seed)
         self.oap2_opd = poppy.StatisticalPSDWFE('OAP2 OPD', index=3.0, wfe=10*u.nm, radius=self.oap2_diam/2, seed=seed)
         self.oap3_opd = poppy.StatisticalPSDWFE('OAP3 OPD', index=3.0, wfe=10*u.nm, radius=self.oap3_diam/2, seed=seed)
         self.oap4_opd = poppy.StatisticalPSDWFE('OAP4 OPD', index=3.0, wfe=10*u.nm, radius=self.oap4_diam/2, seed=seed)
@@ -185,6 +199,9 @@ class CORO():
         self.init_fosys()
         self.init_inwave()
         _, wfs = self.fosys.calc_psf(inwave=self.inwave, return_intermediates=True)
+        
+        
+        
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
         
         return wfs
@@ -207,7 +224,7 @@ class CORO():
         # Interpolate wavefront data to desired platescale
         resamped_wf = self.interp_wf(wf[-1])
         
-        resamped_wf /= np.sqrt(self.normalization)
+#         resamped_wf /= np.sqrt(self.normalization)
 
         return resamped_wf.get()
     
@@ -226,7 +243,7 @@ class CORO():
         
         image = (cp.abs(resamped_wf)**2).get()
         
-        image /= self.normalization
+#         image /= self.normalization
         return image
     
     def interp_wf(self, wave): # this will interpolate the FresnelWavefront data to match the desired pixelscale

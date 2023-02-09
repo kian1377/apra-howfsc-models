@@ -24,6 +24,7 @@ def myimshow(arr, title=None,
              cmap='magma',
              pxscl=None,
              patches=None,
+             grid=False, 
              figsize=(4,4), dpi=125, display_fig=True, return_fig=False):
     fig,ax = plt.subplots(nrows=1, ncols=1, figsize=figsize, dpi=dpi)
     
@@ -80,6 +81,8 @@ def myimshow(arr, title=None,
     fig.colorbar(im, cax=cax)
     plt.close()
     
+    if grid: 
+        ax.grid()
     if display_fig: display(fig)
     if return_fig: return fig,ax
     
@@ -91,6 +94,7 @@ def myimshow2(arr1, arr2,
               lognorm1=False, lognorm2=False,
               vmin1=None, vmax1=None, vmin2=None, vmax2=None, 
               patches1=None, patches2=None,
+              grid=False,
               display_fig=True, 
               return_fig=False, 
               figsize=(10,4), dpi=125, wspace=0.2):
@@ -172,6 +176,10 @@ def myimshow2(arr1, arr2,
     cax = divider.append_axes("right", size="4%", pad=0.075)
     fig.colorbar(im, cax=cax)
     plt.subplots_adjust(wspace=wspace)
+    
+    if grid: 
+        ax[0].grid()
+        ax[1].grid()
     plt.close()
     
     if display_fig: display(fig)
@@ -186,6 +194,7 @@ def myimshow3(arr1, arr2, arr3,
               lognorm1=False, lognorm2=False, lognorm3=False,
               vmin1=None, vmax1=None, vmin2=None, vmax2=None, vmin3=None, vmax3=None, 
               patches1=None, patches2=None, patches3=None,
+              grid=False,
               display_fig=True, 
               return_fig=False, 
               figsize=(10,4), dpi=125, wspace=0.25):
@@ -312,6 +321,10 @@ def myimshow3(arr1, arr2, arr3,
     cax = divider.append_axes("bottom", size="4%", pad=0.075)
     fig.colorbar(im, cax=cax, orientation='horizontal')
     
+    if grid: 
+        ax[0].grid()
+        ax[1].grid()
+        ax[2].grid()
     plt.subplots_adjust(wspace=wspace)
     plt.close()
     

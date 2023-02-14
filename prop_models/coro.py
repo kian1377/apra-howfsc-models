@@ -24,7 +24,7 @@ class CORO():
                  wavelength=None, 
                  npix=256, 
                  oversample=4,
-                 npsf=200,
+                 npsf=100,
                  psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
                  use_opds=False,
@@ -178,6 +178,10 @@ class CORO():
         if self.use_opds: fosys.add_optic(self.oap5_opd)
         fosys.add_optic(poppy.ScalarTransmission('Image Plane'), distance=self.fl_oap5)
         
+        self.inter_fp_index = 5 if self.use_opds else 4
+        self.fpm_index = 13 if self.use_opds else 10
+        self.image_index = 22 if self.use_opds else 17
+        
         self.fosys = fosys
         
     def init_opds(self, seed=123456):
@@ -213,38 +217,25 @@ class CORO():
         self.init_inwave()
         _, wf = self.fosys.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        
-        # Rotate the wavefront data
-        wavefront = wf[-1].wavefront
-        wavefront_r = cupyx.scipy.ndimage.rotate(cp.real(wavefront), angle=-self.det_rotation, reshape=False, order=0)
-        wavefront_i = cupyx.scipy.ndimage.rotate(cp.imag(wavefront), angle=-self.det_rotation, reshape=False, order=0)
-        
-        wf[-1].wavefront = wavefront_r + 1j*wavefront_i
-        
-        # Interpolate wavefront data to desired platescale
-        resamped_wf = self.interp_wf(wf[-1])
-        
-#         resamped_wf /= np.sqrt(self.normalization)
-
-        return resamped_wf.get()
+        resamped_wf = self.rotate_and_interp_image(wf[0]).get()
+        return resamped_wf
     
     def snap(self): # method for getting the PSF in photons
         self.init_fosys()
         self.init_inwave()
-        _, wfs = self.fosys.calc_psf(inwave=self.inwave, return_intermediates=False, return_final=True)
-        
-        wavefront = wfs[-1].wavefront
+        _, wf = self.fosys.calc_psf(inwave=self.inwave, return_intermediates=False, return_final=True)
+        image = (cp.abs(self.rotate_and_interp_image(wf[0]))**2).get()
+        return image
+    
+    def rotate_and_interp_image(self, im_wf):
+        wavefront = im_wf.wavefront
         wavefront_r = cupyx.scipy.ndimage.rotate(cp.real(wavefront), angle=-self.det_rotation, reshape=False, order=0)
         wavefront_i = cupyx.scipy.ndimage.rotate(cp.imag(wavefront), angle=-self.det_rotation, reshape=False, order=0)
         
-        wfs[-1].wavefront = wavefront_r + 1j*wavefront_i
+        im_wf.wavefront = wavefront_r + 1j*wavefront_i
         
-        resamped_wf = self.interp_wf(wfs[-1])
-        
-        image = (cp.abs(resamped_wf)**2).get()
-        
-#         image /= self.normalization
-        return image
+        resamped_wf = self.interp_wf(im_wf)
+        return resamped_wf
     
     def interp_wf(self, wave): # this will interpolate the FresnelWavefront data to match the desired pixelscale
         n = wave.wavefront.shape[0]

@@ -16,7 +16,7 @@ image = PlaneType.image
 import cupy as cp
 import cupyx.scipy.ndimage
 
-from .import misc
+import misc_funs as misc
 
 class CORO():
 
@@ -88,6 +88,7 @@ class CORO():
 
     def init_dm(self):
         self.Nact = 34
+        self.Nacts = 952
         self.act_spacing = 300e-6*u.m
         self.dm_active_diam = 10.2*u.mm
         self.dm_full_diam = 11.1*u.mm

@@ -15,7 +15,7 @@ from . import utils
 reload(pwp)
 reload(utils)
 
-from cgi_phasec_poppy import misc
+import misc_funs as misc
 
 def build_jacobian(sysi, epsilon, dark_mask, display=False):
     start = time.time()
@@ -27,7 +27,7 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False):
     dm_mask = sysi.dm_mask.flatten()
     if hasattr(sysi, 'bad_acts'):
         dm_mask[sysi.bad_acts] = False
-    
+    Nacts = int(dm_mask.sum())
     num_modes = sysi.Nact**2
     modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
     
@@ -38,10 +38,10 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False):
             for amp in amps:
                 mode = modes[i].reshape(sysi.Nact,sysi.Nact)
 
-                sysi.add_dm1(amp*mode)
+                sysi.add_dm(amp*mode)
                 wavefront = sysi.calc_psf()
                 response += amp*wavefront/np.var(amps)
-                sysi.add_dm1(-amp*mode)
+                sysi.add_dm(-amp*mode)
 
             if display:
                 misc.myimshow2(np.abs(response), np.angle(response))
@@ -50,8 +50,7 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False):
 
             responses.append(np.concatenate((response.real, response.imag)))
         
-            print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count,round(dm_mask.sum()),
-                                                                                              time.time()-start))
+            print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count, Nacts, time.time()-start))
             count += 1
         else:
             pass
@@ -89,7 +88,7 @@ def run_efc_perfect(sysi,
     if hasattr(sysi, 'bad_acts'):
         dm_mask[sysi.bad_acts] = False
     
-    dm_ref = sysi.get_dm1()
+    dm_ref = sysi.get_dm()
     dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
     print()
     for i in range(iterations+1):
@@ -102,11 +101,11 @@ def run_efc_perfect(sysi,
                 print('\tComputing EFC matrix via ' + reg_fun.__name__ + ' with condition value {:.2e}'.format(reg_cond))
                 efc_matrix = reg_fun(jac, reg_cond)
 
-            sysi.set_dm1(dm_ref + dm_command)
+            sysi.set_dm(dm_ref + dm_command)
 
             electric_field = sysi.calc_psf()
 
-            commands.append(sysi.get_dm1())
+            commands.append(sysi.get_dm())
             efields.append(copy.copy(electric_field))
 
             efield_ri = np.concatenate( (electric_field[dark_mask].real, electric_field[dark_mask].imag) )
@@ -118,7 +117,7 @@ def run_efc_perfect(sysi,
             if display_current or display_all:
                 if not display_all: clear_output(wait=True)
                     
-                fig,ax = misc.myimshow2(commands[i], np.abs(electric_field)**2, 
+                fig,ax = misc.imshow2(commands[i], np.abs(electric_field)**2, 
                                         'DM', 'Image: Iteration {:d}'.format(i),
                                         cmap1='viridis',
                                         lognorm2=True, vmin2=(np.abs(electric_field)**2).max()/1e7,

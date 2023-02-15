@@ -14,10 +14,10 @@ import pickle
 
 import matplotlib.pyplot as plt
 
-from cgi_phasec_poppy import misc
+import misc_funs as misc
 
 
-def map_acts_to_dm(actuators, dm_mask, Nact=48):
+def map_acts_to_dm(actuators, dm_mask, Nact=34):
     inds = np.where(dm_mask.flatten().astype(int))[0]
     
     command = np.zeros((Nact, Nact))
@@ -99,8 +99,6 @@ def create_bowtie_mask(x, y, params):
         mask *= (th>57.5) * (th<57.5+65) + (th<(360-57.5)) * (th>(360-57.5-65))
     
     return mask
-    
-    
     
 def sms(U, s, alpha2, electric_field, N_DH, Imax_unocc, itr): 
     # jac: system jacobian

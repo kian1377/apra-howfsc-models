@@ -122,8 +122,8 @@ class CORO():
     
     def show_dm(self):
         wf = poppy.FresnelWavefront(beam_radius=self.dm_active_diam/2, npix=self.npix, oversample=1)
-        misc.myimshow2(self.get_dm(), self.DM.get_opd(wf), 'DM Command', 'DM Surface',
-                       pxscl2=wf.pixelscale.to(u.mm/u.pix))
+        misc.imshow2(self.get_dm(), self.DM.get_opd(wf), 'DM Command', 'DM Surface',
+                     pxscl2=wf.pixelscale.to(u.mm/u.pix))
     
     def oaefl(self, roc, oad, k=-1):
         """

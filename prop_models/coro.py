@@ -151,6 +151,10 @@ class CORO():
         oap4_ap = poppy.CircularAperture(radius=self.oap4_diam/2)
         oap5_ap = poppy.CircularAperture(radius=self.oap5_diam/2)
         
+        APODIZER = poppy.ScalarTransmission(name='Apodizer Place-holder') if self.APODIZER is None else self.APODIZER
+        FPM = poppy.ScalarTransmission(name='FPM Place-holder') if self.FPM is None else self.FPM
+        LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if self.LYOT is None else self.LYOT
+        
         # define FresnelOpticalSystem and add optics
         self.pupil_diam = 10.2*u.mm
         fosys = poppy.FresnelOpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, beam_ratio=1/self.oversample)
@@ -164,16 +168,16 @@ class CORO():
         fosys.add_optic(oap2, distance=self.fl_oap2)
         fosys.add_optic(oap2_ap)
         if self.use_opds: fosys.add_optic(self.oap2_opd)
-        fosys.add_optic(self.APODIZER, distance=self.fl_oap2)
+        fosys.add_optic(APODIZER, distance=self.fl_oap2)
         fosys.add_optic(oap3, distance=self.fl_oap3)
         fosys.add_optic(oap3_ap)
         if self.use_opds: fosys.add_optic(self.oap3_opd)
-        fosys.add_optic(self.FPM, distance=self.fl_oap3)
+        fosys.add_optic(FPM, distance=self.fl_oap3)
         fosys.add_optic(oap4, distance=self.fl_oap4)
         fosys.add_optic(oap4_ap)
         if self.use_opds: fosys.add_optic(self.oap4_opd)
         fosys.add_optic(poppy.ScalarTransmission('Lyot Stop Plane'), distance=self.fl_oap4)
-        fosys.add_optic(self.LYOT)
+        fosys.add_optic(LYOT)
         fosys.add_optic(oap5, distance=self.fl_oap5)
         fosys.add_optic(oap5_ap)
         if self.use_opds: fosys.add_optic(self.oap5_opd)

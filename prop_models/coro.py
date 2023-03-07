@@ -32,6 +32,7 @@ class CORO():
                  dm_ref=np.zeros((34,34)),
                  dm_inf=None, # defaults to inf.fits
                  im_norm=None,
+                 OTEWFE=None,
                  APODIZER=None,
                  FPM=None,
                  LYOT=None):
@@ -61,6 +62,7 @@ class CORO():
         
         self.use_opds = use_opds
         
+        self.OTEWFE = poppy.ScalarTransmission(name='OTE WFE Place-holder') if OTEWFE is None else OTEWFE
         self.APODIZER = poppy.ScalarTransmission(name='Apodizer Place-holder') if APODIZER is None else APODIZER
         self.FPM = poppy.ScalarTransmission(name='FPM Place-holder') if FPM is None else FPM
         self.LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if LYOT is None else LYOT
@@ -151,6 +153,7 @@ class CORO():
         oap4_ap = poppy.CircularAperture(radius=self.oap4_diam/2)
         oap5_ap = poppy.CircularAperture(radius=self.oap5_diam/2)
         
+        OTEWFE = poppy.ScalarTransmission(name='OTE WFE Place-holder') if self.OTEWFE is None else self.OTEWFE
         APODIZER = poppy.ScalarTransmission(name='Apodizer Place-holder') if self.APODIZER is None else self.APODIZER
         FPM = poppy.ScalarTransmission(name='FPM Place-holder') if self.FPM is None else self.FPM
         LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if self.LYOT is None else self.LYOT
@@ -160,6 +163,7 @@ class CORO():
         fosys = poppy.FresnelOpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, beam_ratio=1/self.oversample)
         
         fosys.add_optic(poppy.CircularAperture(radius=self.pupil_diam/2)) 
+        fosys.add_optic(OTEWFE)
         fosys.add_optic(self.DM)
         fosys.add_optic(oap1, distance=self.fl_oap1)
         fosys.add_optic(oap1_ap)

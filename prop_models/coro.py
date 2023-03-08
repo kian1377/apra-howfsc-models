@@ -193,13 +193,25 @@ class CORO():
         
         self.fosys = fosys
         
-    def init_opds(self, seed=123456):
-
-        self.oap1_opd = poppy.StatisticalPSDWFE('OAP1 OPD', index=3.0, wfe=50*u.nm, radius=self.oap1_diam/2, seed=seed)
-        self.oap2_opd = poppy.StatisticalPSDWFE('OAP2 OPD', index=3.0, wfe=10*u.nm, radius=self.oap2_diam/2, seed=seed)
-        self.oap3_opd = poppy.StatisticalPSDWFE('OAP3 OPD', index=3.0, wfe=10*u.nm, radius=self.oap3_diam/2, seed=seed)
-        self.oap4_opd = poppy.StatisticalPSDWFE('OAP4 OPD', index=3.0, wfe=10*u.nm, radius=self.oap4_diam/2, seed=seed)
-        self.oap5_opd = poppy.StatisticalPSDWFE('OAP5 OPD', index=3.0, wfe=10*u.nm, radius=self.oap5_diam/2, seed=seed)
+    def init_opds(self, seeds=None):
+        
+        seed1, seed2, seed3, seed4, seed5 = (1,2,3,4,5)
+        self.oap1_opd = poppy.StatisticalPSDWFE('OAP1 OPD', index=3.0, wfe=20*u.nm, radius=self.oap1_diam/2, seed=seed1)
+        self.oap2_opd = poppy.StatisticalPSDWFE('OAP2 OPD', index=3.0, wfe=20*u.nm, radius=self.oap2_diam/2, seed=seed2)
+        self.oap3_opd = poppy.StatisticalPSDWFE('OAP3 OPD', index=3.0, wfe=20*u.nm, radius=self.oap3_diam/2, seed=seed3)
+        self.oap4_opd = poppy.StatisticalPSDWFE('OAP4 OPD', index=3.0, wfe=20*u.nm, radius=self.oap4_diam/2, seed=seed4)
+        self.oap5_opd = poppy.StatisticalPSDWFE('OAP5 OPD', index=3.0, wfe=20*u.nm, radius=self.oap5_diam/2, seed=seed5)
+        
+    def show_opds(self):
+        self.init_opds()
+        
+        wf = poppy.FresnelWavefront(beam_radius=self.dm_active_diam/2, npix=self.npix, oversample=1)
+        
+        misc.imshow1(self.oap1_opd.get_opd(wf), 'OAP1 OPD', pxscl=wf.pixelscale.to(u.mm/u.pix), xlabel='mm')
+        misc.imshow1(self.oap2_opd.get_opd(wf), 'OAP2 OPD', pxscl=wf.pixelscale.to(u.mm/u.pix), xlabel='mm')
+        misc.imshow1(self.oap3_opd.get_opd(wf), 'OAP3 OPD', pxscl=wf.pixelscale.to(u.mm/u.pix), xlabel='mm')
+        misc.imshow1(self.oap4_opd.get_opd(wf), 'OAP4 OPD', pxscl=wf.pixelscale.to(u.mm/u.pix), xlabel='mm')
+        misc.imshow1(self.oap5_opd.get_opd(wf), 'OAP5 OPD', pxscl=wf.pixelscale.to(u.mm/u.pix), xlabel='mm')
         
     def init_inwave(self):
         inwave = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
@@ -212,9 +224,6 @@ class CORO():
         self.init_fosys()
         self.init_inwave()
         _, wfs = self.fosys.calc_psf(inwave=self.inwave, return_intermediates=True)
-        
-        
-        
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
         
         return wfs

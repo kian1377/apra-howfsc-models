@@ -1,4 +1,5 @@
 clear all; close all; clc
+import matlab.io.*
 
 theApplication = ConnectZemax();
 
@@ -33,7 +34,7 @@ m3_fsm = theLDE.GetSurfaceAt(6).Thickness;
 fsm_fp = theLDE.GetSurfaceAt(10).Thickness;
 
 keys = ["decenter_x" "decenter_y" "decenter_z" "tilt_x" "tilt_y" "tilt_z"];
-m1_vals = [0 1e-6 1e-6 0.0001 0 0];
+m1_vals = [0 0 0 0 0 0];
 m1_vals(1:3) = m1_vals(1:3)*1e3;
 m1_misalignment = dictionary(keys, m1_vals);
 
@@ -74,9 +75,11 @@ axis image
 CloseZemax(theApplication)
 
 % save the WFE data to a fits file
-fname = 'wfe_on_axis.fits';
+% fname = 'C:\Users\Kian\Documents\data-files\time-series-wfe\wfe_on_axis.fits';
+fname = '!wfe_on_axis.fits';
 fitswrite(wfe_data, fname, 'WriteMode','overwrite')
-
-
+% fptr = fits.createFile(fname);
+% fits.writeKey(fptr, 'PIXELSCL', 0.0102/1024, 'pixelscale of the pupil')
+% fits.closeFile(fptr)
 
 

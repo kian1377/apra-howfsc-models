@@ -97,7 +97,7 @@ class CORO():
         
         self.full_stroke = 1.5e-6*u.m
         
-        self.dm_mask = np.ones((self.Nact,self.Nact))
+        self.dm_mask = np.ones((self.Nact,self.Nact), dtype=bool)
         xx = (np.linspace(0, self.Nact-1, self.Nact) - self.Nact/2 + 1/2) * self.act_spacing.to(u.mm).value*2
         x,y = np.meshgrid(xx,xx)
         r = np.sqrt(x**2 + y**2)

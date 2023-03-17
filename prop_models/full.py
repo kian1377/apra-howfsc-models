@@ -176,7 +176,9 @@ class CORO():
         fosys.add_optic(oap3, distance=self.fl_oap3)
         fosys.add_optic(oap3_ap)
         if self.use_opds: fosys.add_optic(self.oap3_opd)
+            
         fosys.add_optic(FPM, distance=self.fl_oap3)
+        
         fosys.add_optic(oap4, distance=self.fl_oap4)
         fosys.add_optic(oap4_ap)
         if self.use_opds: fosys.add_optic(self.oap4_opd)
@@ -217,6 +219,7 @@ class CORO():
         inwave = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
                                         npix=self.npix, oversample=self.oversample)
         self.inwave = inwave
+        print(self.inwave.amplitude)
     
     def calc_wfs(self, quiet=False):
         start = time.time()

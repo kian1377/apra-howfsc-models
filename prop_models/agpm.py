@@ -15,8 +15,8 @@ from poppy import utils
 import numpy as np
 
 poppy.accel_math.update_math_settings()
-global _ncp
-from poppy.accel_math import _ncp
+global xp
+from poppy.accel_math import xp
 
 import astropy.units as u
 
@@ -40,8 +40,8 @@ class IdealAGPM(poppy.AnalyticOpticalElement):
                  **kwargs):
         
         poppy.accel_math.update_math_settings()
-        global _ncp
-        from poppy.accel_math import _ncp
+        global xp
+        from poppy.accel_math import xp
         
         poppy.AnalyticOpticalElement.__init__(self, planetype=PlaneType.intermediate, **kwargs)
         self.name = name
@@ -61,25 +61,25 @@ class IdealAGPM(poppy.AnalyticOpticalElement):
         assert (wave.planetype != PlaneType.image)
 
         y, x= self.get_coordinates(wave)
-        phase = _ncp.arctan2(y, x)
+        phase = xp.arctan2(y, x)
 
-        AGPM_phasor = _ncp.exp(1.j * self.lp * phase) * self.get_transmission(wave)
+        AGPM_phasor = xp.exp(1.j * self.lp * phase) * self.get_transmission(wave)
 
-        idx = _ncp.where(x==0)[0][0]
-        idy = _ncp.where(y==0)[0][0]
+        idx = xp.where(x==0)[0][0]
+        idy = xp.where(y==0)[0][0]
         AGPM_phasor[idx, idy] = 0
         return AGPM_phasor
 
     def get_opd(self, wave):
         y, x = self.get_coordinates(wave)
-        phase = _ncp.arctan2(y, x)
+        phase = xp.arctan2(y, x)
         return self.lp * phase * self.central_wavelength.to(u.meter).value / (2 * np.pi)
 
     def get_transmission(self, wave):
         y, x = self.get_coordinates(wave)
         
         if self.singularity is None:
-            trans = _ncp.ones(y.shape)
+            trans = xp.ones(y.shape)
         else:
             circ = poppy.InverseTransmission(poppy.CircularAperture(radius=self.singularity/2))
             trans = circ.get_transmission(wave)

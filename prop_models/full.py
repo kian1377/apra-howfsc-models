@@ -22,8 +22,8 @@ class CORO():
 
     def __init__(self, 
                  wavelength=None, 
-                 npix=256, 
-                 oversample=4,
+                 npix=128, 
+                 oversample=16,
                  npsf=100,
                  psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 

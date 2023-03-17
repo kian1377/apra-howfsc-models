@@ -8,3 +8,4 @@
 # Ignore data for the jacobians and saved images
 jacobians/
 images/
+pupil-data/

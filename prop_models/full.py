@@ -82,7 +82,7 @@ class CORO():
         
         self.det_rotation = detector_rotation
         
-        if self.use_opds: self.init_opds()
+        self.init_opds()
         self.init_fosys()
         
     def getattr(self, attr):
@@ -219,7 +219,6 @@ class CORO():
         inwave = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
                                         npix=self.npix, oversample=self.oversample)
         self.inwave = inwave
-        print(self.inwave.amplitude)
     
     def calc_wfs(self, quiet=False):
         start = time.time()

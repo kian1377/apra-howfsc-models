@@ -55,12 +55,12 @@ class IdealAGPM(poppy.AnalyticOpticalElement):
         some given pixel spacing corresponding to the supplied Wavefront
         """
 
-        if not isinstance(wave, Wavefront) and not isinstance(wave, FresnelWavefront):  # pragma: no cover
-            raise ValueError("AGPM get_phasor must be called with a Wavefront "
-                             "to define the spacing")
-        assert (wave.planetype != PlaneType.image)
+#         if not isinstance(wave, Wavefront) and not isinstance(wave, FresnelWavefront):  # pragma: no cover
+#             raise ValueError("AGPM get_phasor must be called with a Wavefront "
+#                              "to define the spacing")
+#         assert (wave.planetype != PlaneType.image)
 
-        y, x= self.get_coordinates(wave)
+        y, x = self.get_coordinates(wave)
         phase = xp.arctan2(y, x)
 
         AGPM_phasor = xp.exp(1.j * self.lp * phase) * self.get_transmission(wave)

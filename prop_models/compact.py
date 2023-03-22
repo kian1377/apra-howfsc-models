@@ -133,7 +133,7 @@ class CORO():
         osys.add_pupil(APODIZER)
         osys.add_image(FPM)
         osys.add_pupil(LYOT)
-        osys.add_detector(pixelscale=self.psf_pixelscale_as.value, fov_pixels=self.npsf/self.oversample,)
+        osys.add_detector(pixelscale=self.psf_pixelscale_as.value, fov_pixels=self.npsf /self.oversample)
         
         self.osys = osys
         

@@ -64,7 +64,8 @@ class IdealAGPM(poppy.AnalyticOpticalElement):
         phase = xp.arctan2(y, x)
 
         AGPM_phasor = xp.exp(1.j * self.lp * phase) * self.get_transmission(wave)
-
+        
+#         print(x)
         idx = xp.where(x==0)[0][0]
         idy = xp.where(y==0)[0][0]
         AGPM_phasor[idx, idy] = 0

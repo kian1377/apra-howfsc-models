@@ -13,6 +13,7 @@ from importlib import reload
 from . import utils
 reload(utils)
 
+import misc_funs as misc
 
 def create_sinc_probe(Nacts, amp, probe_radius, probe_phase=0, offset=(0,0), bad_axis='x'):
     print('Generating probe with amplitude={:.3e}, radius={:.1f}, phase={:.3f}, offset=({:.1f},{:.1f}), with discontinuity along '.format(amp, probe_radius, probe_phase, offset[0], offset[1]) + bad_axis + ' axis.')
@@ -52,9 +53,9 @@ def create_sinc_probes(Npairs, Nacts, dm_mask, probe_amplitude, probe_radius=10,
     
     if display:
         if Npairs==2:
-            misc.myimshow2(probes[0], probes[1])
+            misc.imshow2(probes[0], probes[1])
         elif Npairs==3:
-            misc.myimshow3(probes[0], probes[1], probes[2])
+            misc.imshow3(probes[0], probes[1], probes[2])
     
     return np.array(probes)
 
@@ -88,7 +89,7 @@ def run_pwp_bp(sysi, dark_mask,
             sysi.add_dm(-amp*probe) # remove probe from DM
             
         if display:
-            misc.myimshow3(Ip[i], In[i], Ip[i]-In[i],
+            misc.imshow3(Ip[i], In[i], Ip[i]-In[i],
                            'Probe {:d} Positive Image'.format(i+1), 'Probe {:d} Negative Image'.format(i+1),
                            'Intensity Difference',
                            lognorm1=True, lognorm2=True, vmin1=Ip[i].max()/1e6, vmin2=In[i].max()/1e6,
@@ -100,7 +101,7 @@ def run_pwp_bp(sysi, dark_mask,
         if (use=='jacobian' or use=='j') and jacobian is not None:
 #             E_probe = 1j*jacobian.dot(np.array(probes[i].flatten())) # Use jacobian to model probe E-field at the focal plane
 #             E_probe = 1j*jacobian.dot(np.array(probes[i].flatten()[act_inds])) 
-            E_probe = 1j*jacobian.dot(np.array(probes[i][sysi.dm_mask])) 
+            E_probe = jacobian.dot(np.array(probes[i][sysi.dm_mask])) 
             E_probe = E_probe[:nmask] + 1j*E_probe[nmask:]
         elif (use=='model' or use=='m') and model is not None:
             if i==0: E_full = model.calc_psf().wavefront.get()[dark_mask]
@@ -114,7 +115,7 @@ def run_pwp_bp(sysi, dark_mask,
         if display_probe_field:
             E_probe_2d = np.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
             np.place(E_probe_2d, mask=dark_mask, vals=E_probe)
-            misc.myimshow2(np.abs(E_probe_2d), np.angle(E_probe_2d), 'E_probe Amp', 'E_probe Phase')
+            misc.imshow2(np.abs(E_probe_2d), np.angle(E_probe_2d), 'E_probe Amp', 'E_probe Phase')
         
         E_probes[i, :nmask] = E_probe.real
         E_probes[i, nmask:] = E_probe.imag
@@ -164,7 +165,7 @@ def run_pwp_redmond(sysi, dark_mask,
             sysi.add_dm1(-amp*probe) # remove probe from DM
             
         if display:
-            misc.myimshow3(Ip[i], In[i], Ip[i]-In[i],
+            misc.imshow3(Ip[i], In[i], Ip[i]-In[i],
                            'Probe {:d} Positive Image'.format(i+1), 'Probe {:d} Negative Image'.format(i+1),
                            'Intensity Difference',
                            lognorm1=True, lognorm2=True, vmin1=Ip[i].max()/1e6, vmin2=In[i].max()/1e6,
@@ -192,10 +193,10 @@ def run_pwp_redmond(sysi, dark_mask,
         E_probe_2d = np.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
         np.place(E_probe_2d, mask=dark_mask, 
                  vals=E_probes[i*2*nmask : (i+1)*2*nmask ][:nmask] + 1j*E_probes[i*2*nmask : (i+1)*2*nmask ][nmask:])
-        misc.myimshow2(np.abs(E_probe_2d), np.angle(E_probe_2d), 'E_probe Amp', 'E_probe Phase')
+        misc.imshow2(np.abs(E_probe_2d), np.angle(E_probe_2d), 'E_probe Amp', 'E_probe Phase')
         
     B = np.diag(np.ones((nmask,2*nmask))[0], k=0)[:nmask,:2*nmask] + np.diag(np.ones((nmask,2*nmask))[0], k=nmask)[:nmask,:2*nmask]
-    misc.myimshow(B, figsize=(10,4))
+    misc.imshow(B, figsize=(10,4))
     print('B.shape', B.shape)
     
     for i in range(nprobes):
@@ -242,7 +243,7 @@ def run_pwp_2011(sysi, dark_mask,
             sysi.add_dm1(-amp*probe) # remove probe from DM
             
         if display:
-            misc.myimshow3(Ip[i], In[i], Ip[i]-In[i],
+            misc.imshow3(Ip[i], In[i], Ip[i]-In[i],
                            'Probe {:d} Positive Image'.format(i+1), 'Probe {:d} Negative Image'.format(i+1),
                            'Intensity Difference',
                            lognorm1=True, lognorm2=True, vmin1=Ip[i].max()/1e6, vmin2=In[i].max()/1e6,

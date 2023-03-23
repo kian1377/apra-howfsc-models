@@ -63,6 +63,8 @@ class CORO():
         
         self.dm_inf = 'inf.fits' if dm_inf is None else dm_inf
         
+        self.norm = 'first'
+        
         self.RETRIEVED = poppy.ScalarTransmission(name='Retrieved WFE Place-holder') if RETRIEVED is None else RETRIEVED
         self.APODIZER = poppy.ScalarTransmission(name='Apodizer Place-holder') if APODIZER is None else APODIZER
         self.FPM = poppy.ScalarTransmission(name='FPM Place-holder') if FPM is None else FPM
@@ -147,7 +149,7 @@ class CORO():
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_osys()
         self.init_inwave()
-        _, wfs = self.osys.calc_psf(inwave=self.inwave, return_intermediates=True)
+        _, wfs = self.osys.calc_psf(inwave=self.inwave, normalize=self.norm, return_intermediates=True)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
         
         return wfs
@@ -157,16 +159,14 @@ class CORO():
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_osys()
         self.init_inwave()
-        _, wf = self.osys.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
+        _, wf = self.osys.calc_psf(inwave=self.inwave, normalize=self.norm, return_final=True, return_intermediates=False)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-#         resamped_wf = self.rotate_and_interp_image(wf[0]).get()
         return wf[0].wavefront.get()
     
     def snap(self): # method for getting the PSF in photons
         self.init_osys()
         self.init_inwave()
-        _, wf = self.osys.calc_psf(inwave=self.inwave, return_intermediates=False, return_final=True)
-#         image = (cp.abs(self.rotate_and_interp_image(wf[0]))**2).get()
+        _, wf = self.osys.calc_psf(inwave=self.inwave, normalize=self.norm, return_intermediates=False, return_final=True)
         image = wf[0].intensity.get()
         return image
     

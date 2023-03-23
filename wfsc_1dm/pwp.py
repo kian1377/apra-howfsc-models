@@ -99,10 +99,8 @@ def run_pwp_bp(sysi, dark_mask,
     I_diff = np.zeros((probes.shape[0], nmask))
     for i in range(len(probes)):
         if (use=='jacobian' or use=='j') and jacobian is not None:
-#             E_probe = 1j*jacobian.dot(np.array(probes[i].flatten())) # Use jacobian to model probe E-field at the focal plane
-#             E_probe = 1j*jacobian.dot(np.array(probes[i].flatten()[act_inds])) 
             E_probe = jacobian.dot(np.array(probes[i][sysi.dm_mask])) 
-            E_probe = E_probe[:nmask] + 1j*E_probe[nmask:]
+            E_probe = E_probe[::2] + 1j*E_probe[1::2]
         elif (use=='model' or use=='m') and model is not None:
             if i==0: E_full = model.calc_psf().wavefront.get()[dark_mask]
                 
@@ -117,16 +115,16 @@ def run_pwp_bp(sysi, dark_mask,
             np.place(E_probe_2d, mask=dark_mask, vals=E_probe)
             misc.imshow2(np.abs(E_probe_2d), np.angle(E_probe_2d), 'E_probe Amp', 'E_probe Phase')
         
-        E_probes[i, :nmask] = E_probe.real
-        E_probes[i, nmask:] = E_probe.imag
-
-        I_diff[i:(i+1), :] = (Ip[i] - In[i])[dark_mask]
+        E_probes[i, ::2] = E_probe.real
+        E_probes[i, 1::2] = E_probe.imag
+        I_diff[i, :] = (Ip[i] - In[i])[dark_mask]
     
     # Use batch process to estimate each pixel individually
     E_est = np.zeros((nmask,), dtype=cp.complex128)
     for i in range(nmask):
         delI = I_diff[:, i]
-        M = 4*np.array([E_probes[:,i], E_probes[:,i+nmask]]).T
+#         M = 4*np.array([E_probes[:,i], E_probes[:,i+nmask]]).T
+        M = 4*np.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
         Minv = np.linalg.pinv(M.T@M, 1e-1)@M.T
     
         est = Minv.dot(delI)

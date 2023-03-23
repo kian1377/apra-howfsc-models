@@ -60,6 +60,8 @@ class CORO():
         
         self.dm_inf = 'inf.fits' if dm_inf is None else dm_inf
         
+        self.norm = 'first'
+        
         self.use_opds = use_opds
         
         self.OTEWFE = poppy.ScalarTransmission(name='OTE WFE Place-holder') if OTEWFE is None else OTEWFE
@@ -225,7 +227,7 @@ class CORO():
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_fosys()
         self.init_inwave()
-        _, wfs = self.fosys.calc_psf(inwave=self.inwave, return_intermediates=True)
+        _, wfs = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_intermediates=True)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
         
         return wfs
@@ -235,7 +237,7 @@ class CORO():
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_fosys()
         self.init_inwave()
-        _, wf = self.fosys.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
+        _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_final=True, return_intermediates=False)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
         resamped_wf = self.rotate_and_interp_image(wf[0]).get()
         return resamped_wf
@@ -243,7 +245,7 @@ class CORO():
     def snap(self): # method for getting the PSF in photons
         self.init_fosys()
         self.init_inwave()
-        _, wf = self.fosys.calc_psf(inwave=self.inwave, return_intermediates=False, return_final=True)
+        _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_intermediates=False, return_final=True)
         image = (cp.abs(self.rotate_and_interp_image(wf[0]))**2).get()
         return image
     

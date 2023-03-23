@@ -17,48 +17,6 @@ reload(utils)
 
 import misc_funs as misc
 
-# def build_jacobian(sysi, epsilon, dark_mask, display=False):
-#     start = time.time()
-#     print('Building Jacobian.')
-    
-#     responses = []
-#     amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
-    
-#     dm_mask = sysi.dm_mask.flatten()
-#     if hasattr(sysi, 'bad_acts'):
-#         dm_mask[sysi.bad_acts] = False
-#     Nacts = int(dm_mask.sum())
-#     num_modes = sysi.Nact**2
-#     modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
-    
-#     count = 1
-#     for i in range(num_modes):
-#         if dm_mask[i]:
-#             response = 0
-#             for amp in amps:
-#                 mode = modes[i].reshape(sysi.Nact,sysi.Nact)
-
-#                 sysi.add_dm(amp*mode)
-#                 wavefront = sysi.calc_psf()
-#                 response += amp*wavefront/np.var(amps)
-#                 sysi.add_dm(-amp*mode)
-
-#             if display:
-#                 misc.myimshow2(np.abs(response), np.angle(response))
-                
-#             response = response.flatten()[dark_mask.flatten()]
-
-#             responses.append(np.concatenate((response.real, response.imag)))
-        
-#             print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count, Nacts, time.time()-start))
-#             count += 1
-#         else:
-#             pass
-#     jacobian = np.array(responses).T
-#     print('Jacobian built in {:.3f} sec'.format(time.time()-start))
-    
-#     return jacobian
-
 def build_jacobian(sysi, epsilon, dark_mask, display=False):
     start = time.time()
     print('Building Jacobian.')
@@ -151,7 +109,6 @@ def run_efc_perfect(sysi,
             commands.append(sysi.get_dm())
             efields.append(copy.copy(electric_field))
 
-#             efield_ri = np.concatenate( (electric_field[dark_mask].real, electric_field[dark_mask].imag) )
             efield_ri = np.zeros(2*dark_mask.sum())
             efield_ri[::2] = electric_field[dark_mask].real
             efield_ri[1::2] = electric_field[dark_mask].imag
@@ -213,6 +170,7 @@ def run_efc_pwp(sysi,
     
     dm_ref = sysi.get_dm()
     dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
+    efield_ri = np.zeros(2*dark_mask.sum())
     for i in range(iterations+1):
         try:
             print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
@@ -227,11 +185,17 @@ def run_efc_pwp(sysi,
             E_est = pwp_fun(sysi, dark_mask, **pwp_kwargs)
             I_exact = sysi.snap()
             
+            I_est = np.abs(E_est)**2
+            rms_est = np.sqrt(np.mean(I_est[dark_mask]**2))
+            rms_im = np.sqrt(np.mean(I_exact[dark_mask]**2))
+            mf = rms_est/rms_im # measure how well the estimate and image match
+            
             commands.append(sysi.get_dm())
             efields.append(copy.copy(E_est))
             images.append(copy.copy(I_exact))
 
-            efield_ri = np.concatenate( (E_est[dark_mask].real, E_est[dark_mask].imag) )
+            efield_ri[::2] = E_est[dark_mask].real
+            efield_ri[1::2] = E_est[dark_mask].imag
             del_dm = -efc_matrix.dot(efield_ri)
             
             del_dm = utils.map_acts_to_dm(del_dm, dm_mask)
@@ -239,7 +203,8 @@ def run_efc_pwp(sysi,
             
             if display_current or display_all:
                 if not display_all: clear_output(wait=True)
-
+                    
+                print('Estimation and exact image match factor is {:.3f}'.format(mf))
                 misc.imshow3(commands[i], np.abs(E_est)**2, I_exact, 
                             'DM', 'Estimated Intensity', 'Image: Iteration {:d}'.format(i),
                             cmap1='viridis',

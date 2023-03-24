@@ -61,7 +61,7 @@ class CORO():
         self.dm_inf = 'inf.fits' if dm_inf is None else dm_inf
         
         self.norm = 'first'
-        
+        self.defocus = 0*u.nm
         self.use_opds = use_opds
         
         self.OTEWFE = poppy.ScalarTransmission(name='OTE WFE Place-holder') if OTEWFE is None else OTEWFE
@@ -189,7 +189,7 @@ class CORO():
         fosys.add_optic(oap5, distance=self.fl_oap5)
         fosys.add_optic(oap5_ap)
         if self.use_opds: fosys.add_optic(self.oap5_opd)
-        fosys.add_optic(poppy.ScalarTransmission('Image Plane'), distance=self.fl_oap5)
+        fosys.add_optic(poppy.ScalarTransmission('Image Plane'), distance=self.fl_oap5 + self.defocus)
         
         self.inter_fp_index = 5 if self.use_opds else 4
         self.fpm_index = 13 if self.use_opds else 10

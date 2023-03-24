@@ -387,8 +387,9 @@ class GPUQueue(object):
 # ------ SETUP --------
 
 def get_defocus_probes(fitmask, vals_waves):
-    zmodes = zernike.arbitrary_basis(fitmask, nterms=4, outside=0) 
-    return np.exp(1j*zmodes[-1]*2*np.pi*np.asarray(vals_waves)[:,None,None])
+    xp = get_array_module(fitmask)
+    zmodes = zernike.arbitrary_basis(cp.array(fitmask), nterms=4, outside=0).get()
+    return xp.exp(1j*zmodes[-1]*2*np.pi*xp.asarray(vals_waves)[:,None,None])
 
 def get_fitting_region(shape, nside):
     cen = ( (shape[0]-1)/2., (shape[1]-1)/2.)

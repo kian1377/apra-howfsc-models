@@ -17,9 +17,8 @@ reload(utils)
 
 import misc_funs as misc
 
-def build_jacobian(sysi, epsilon, dark_mask, display=False):
+def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
     start = time.time()
-    print('Building Jacobian.')
     
     amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
     
@@ -51,8 +50,9 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False):
                 
             responses[::2,count] = response[dark_mask].real
             responses[1::2,count] = response[dark_mask].imag
-        
-            print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start))
+            
+            if print_status:
+                print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start))
             count += 1
         else:
             pass

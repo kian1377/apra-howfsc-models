@@ -156,9 +156,9 @@ def get_random_probes(rms, alpha, dm_mask, fmin=1, fmax=17, nprobe=3):
         probe *= dm_mask * rms / masked_rms(probe, dm_mask)
         allprobes.append(probe.real)
     if nprobe==2:
-        misc.myimshow2(allprobes[0], allprobes[1])
+        misc.imshow2(allprobes[0], allprobes[1])
     elif nprobe==3:
-        misc.myimshow3(allprobes[0], allprobes[1], allprobes[2])
+        misc.imshow3(allprobes[0], allprobes[1], allprobes[2])
     return np.asarray(allprobes)
 
 from scipy.linalg import hadamard
@@ -288,8 +288,8 @@ def create_probe_poke_modes(Nact,
     
     if display:
         if len(xinds)==2:
-            misc.myimshow2(probe_modes[0], probe_modes[1])
+            misc.imshow2(probe_modes[0], probe_modes[1])
         elif len(xinds)==3:
-            misc.myimshow3(probe_modes[0], probe_modes[1], probe_modes[2])
+            misc.imshow3(probe_modes[0], probe_modes[1], probe_modes[2])
             
     return probe_modes

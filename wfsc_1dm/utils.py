@@ -1,21 +1,32 @@
 import numpy as np
-import cupy as cp
 import poppy
 if poppy.accel_math._USE_CUPY:
+    import cupy as cp
+    import cupyx.scipy
+    xp = cp
+    _scipy = cupyx.scipy
     from cupyx.scipy.sparse import linalg as sLA
 else:
+    xp = np
+    import scipy
+    _scipy = scipy
     from scipy.sparse import linalg as sLA
-
+    
 from scipy import interpolate, ndimage
 import time
 from astropy.io import fits
-from matplotlib.patches import Circle, Rectangle
 import pickle
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Circle, Rectangle
 
 import misc_funs as misc
 
+def ensure_np_array(arr):
+    if poppy.accel_math._USE_CUPY and isinstance(arr, cp.ndarray):
+        return arr.get()
+    else:
+        return arr
 
 def map_acts_to_dm(actuators, dm_mask, Nact=34):
     inds = np.where(dm_mask.flatten().astype(int))[0]
@@ -28,7 +39,7 @@ def map_acts_to_dm(actuators, dm_mask, Nact=34):
 # Create control matrix
 def WeightedLeastSquares(A, W, rcond=1e-15):
     cov = A.T.dot(W.dot(A))
-    return np.linalg.inv(cov + rcond * np.diag(cov).max() * np.eye(A.shape[1])).dot( A.T.dot(W) )
+    return xp.linalg.inv(cov + rcond * xp.diag(cov).max() * xp.eye(A.shape[1])).dot( A.T.dot(W) )
 
 def TikhonovInverse(A, rcond=1e-15):
     if isinstance(A, cp.ndarray):
@@ -39,14 +50,13 @@ def TikhonovInverse(A, rcond=1e-15):
     return (Vt.T * s_inv).dot(U.T)
 
 def beta_reg(S, beta=-1):
-    # S is the sensitivity matrix, also known as the Jacobian
-    sts = np.matmul(S.conj().T, S)
-    rho = np.diag(sts)
+    # S is the sensitivity matrix also known as the Jacobian
+    sts = xp.matmul(S.T, S)
+    rho = xp.diag(sts)
     alpha2 = rho.max()
-    
-    gain_matrix = np.matmul( np.linalg.inv( sts + alpha2*10.0**(beta)*np.eye(sts.shape[0]) ), S.T)
-    return gain_matrix
 
+    gain_matrix = xp.matmul( xp.linalg.inv( sts + alpha2*10.0**(beta)*xp.eye(sts.shape[0]) ), S.T)
+    return gain_matrix
 
 def create_circ_mask(h, w, center=None, radius=None):
 
@@ -63,17 +73,13 @@ def create_circ_mask(h, w, center=None, radius=None):
 
 # Creating focal plane masks
 def create_annular_focal_plane_mask(x, y, params):
-    inner_radius, outer_radius, edge_position, rot = (params['inner_radius'], params['outer_radius'], 
-                                                      params['edge_position'], params['rotation'])
-    
-    r = np.hypot(x, y)
-    mask = (r < outer_radius) * (r > inner_radius)
-    if params['full']==False:
-        mask *= (x > edge_position)
-    else:
-        mask *= (abs(x) > edge_position)
-    
-    mask = ndimage.rotate(mask, rot, reshape=False, order=0)
+    r = xp.hypot(x, y)
+    mask = (r < params['outer_radius']) * (r > params['inner_radius'])
+    if 'edge_position' in params: mask *= (x > params['edge_position'])
+        
+    if 'rotation' in params: mask = _scipy.ndimage.rotate(mask, params['rotation'], reshape=False, order=0)
+    if 'xshift' in params: mask = _scipy.ndimage.shift(mask, (0, params['xshift']), order=0)
+    if 'yshift' in params: mask = _scipy.ndimage.shift(mask, (params['yshift'], 0), order=0)
     
     return mask
 
@@ -82,45 +88,29 @@ def create_box_focal_plane_mask(x, y, params):
     mask = ( abs(x - x0) < width/2 ) * ( abs(y - y0) < height/2 )
     return mask > 0
 
-
-def create_bowtie_mask(x, y, params):
-    inner_radius, outer_radius, side = (params['inner_radius'], params['outer_radius'], params['side'])
-    
-    r = np.hypot(x, y)
-    th = np.arctan2(x,y)*180/np.pi + 180
-    
-    mask = (r < outer_radius) * (r > inner_radius)
-    
-    if side=='left' or side=='l':
-        mask *= (th>57.5) * (th<57.5+65)
-    elif side=='right' or side=='r':
-        mask *= (th<(360-57.5)) * (th>(360-57.5-65))
-    if side=='both' or side=='b':
-        mask *= (th>57.5) * (th<57.5+65) + (th<(360-57.5)) * (th>(360-57.5-65))
-    
-    return mask
-    
-def sms(U, s, alpha2, electric_field, N_DH, Imax_unocc, itr): 
+def sms(U, s, alpha2, electric_field, N_DH, 
+        Imax_unocc, 
+        itr): 
     # jac: system jacobian
     # electric_field: the electric field acquired by estimation or from the model
     
     E_ri = U.conj().T.dot(electric_field)
-    SMS = np.abs(E_ri)**2/(N_DH/2*Imax_unocc)
-
-    Nbox = 31
-    box = np.ones(Nbox)/Nbox
-    SMS_smooth = np.convolve(SMS, box, mode='same')
+    SMS = xp.abs(E_ri)**2/(N_DH/2 * Imax_unocc)
     
-    x = s**2/alpha2
+    Nbox = 31
+    box = xp.ones(Nbox)/Nbox
+    SMS_smooth = xp.convolve(SMS, box, mode='same')
+    
+    x = (s**2/alpha2)
     y = SMS_smooth
     
-    xmax = np.max(x)
+    xmax = float(np.max(x))
     xmin = 1e-10 
     ymax = 1
     ymin = 1e-14
     
     fig = plt.figure(dpi=125)
-    plt.loglog(x, y)
+    plt.loglog(ensure_np_array(x), ensure_np_array(y))
     plt.title('Singular Mode Spectrum: Iteration {:d}'.format(itr))
     plt.xlim(xmin, xmax)
     plt.ylim(ymin, ymax)
@@ -131,7 +121,7 @@ def sms(U, s, alpha2, electric_field, N_DH, Imax_unocc, itr):
     display(fig)
     
     return fig
-    
+
 
 def masked_rms(image,mask=None):
     return np.sqrt(np.mean(image[mask]**2))
@@ -155,11 +145,9 @@ def get_random_probes(rms, alpha, dm_mask, fmin=1, fmax=17, nprobe=3):
         probe = np.fft.irfft2(spectrum)
         probe *= dm_mask * rms / masked_rms(probe, dm_mask)
         allprobes.append(probe.real)
-    if nprobe==2:
-        misc.imshow2(allprobes[0], allprobes[1])
-    elif nprobe==3:
-        misc.imshow3(allprobes[0], allprobes[1], allprobes[2])
+        
     return np.asarray(allprobes)
+
 
 from scipy.linalg import hadamard
 def get_hadamard_modes(dm_mask): 
@@ -180,12 +168,10 @@ def get_hadamard_modes(dm_mask):
     return had_modes
 
 def create_fourier_modes(xfp, mask, Nact=34, use_both=True, circular_mask=True):
-    print("Creating Fourier modes: ", mask.shape)
     intp = interpolate.interp2d(xfp, xfp, mask)
     
     # This creates the grid and frequencies
     xs = np.linspace(-0.5, 0.5, Nact) * (Nact-1)
-#     print(xs)
     x, y = np.meshgrid(xs, xs)
     x = x.ravel()
     y = y.ravel()
@@ -199,10 +185,8 @@ def create_fourier_modes(xfp, mask, Nact=34, use_both=True, circular_mask=True):
     fx, fy = np.meshgrid(fxs, fxs)
 #     print(fx)
     # Select all Fourier modes of interest based on the dark hole mask and remove the piston mode
-    mask2 = intp(fxs * Nact, fxs * Nact) * (((fx!=0) + (fy!=0)) > 0) > 0
-#     print(mask2.shape)
-#     misc.myimshow(mask2)
-
+    mask2 = intp(fxs * Nact, fxs * Nact) * ( ((fx!=0) + (fy!=0)) > 0 ) > 0
+    
     fx = fx.ravel()[mask2.ravel()]
     fy = fy.ravel()[mask2.ravel()]
 #     print(fx)
@@ -219,31 +203,31 @@ def create_fourier_modes(xfp, mask, Nact=34, use_both=True, circular_mask=True):
     if circular_mask: 
         circ = np.ones((Nact,Nact))
         r = np.sqrt(x.reshape((Nact,Nact))**2 + y.reshape((Nact,Nact))**2)
-        circ[r>(Nact)/2] = 0
+        circ[r>(Nact+1)/2] = 0
         M[:] *= circ.flatten()
         
     M /= np.std(M, axis=1, keepdims=True)
         
     return M, fx, fy
 
-def select_fourier_modes(sysi, control_mask, fourier_sampling=0.75):
+def select_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both'):
     xfp = (np.linspace(-sysi.npsf/2, sysi.npsf/2-1, sysi.npsf) + 1/2) * sysi.psf_pixelscale_lamD
     fpx, fpy = np.meshgrid(xfp,xfp)
 #     print(xfp)
     
-    intp = interpolate.interp2d(xfp, xfp, control_mask) # setup the interpolation function
+    intp = interpolate.interp2d(xfp, xfp, ensure_np_array(control_mask)) # setup the interpolation function
     
     xpp = np.linspace(-sysi.Nact/2, sysi.Nact/2-1, sysi.Nact) + 1/2
     ppx, ppy = np.meshgrid(xpp,xpp)
 #     print(xpp)
     
-    fourier_lim = fourier_sampling * np.round(xfp.max()/fourier_sampling)
+    fourier_lim = fourier_sampling * int(np.round(xfp.max()/fourier_sampling))
     xfourier = np.arange(-fourier_lim-fourier_sampling/2, fourier_lim+fourier_sampling, fourier_sampling)
     fourier_x, fourier_y = np.meshgrid(xfourier, xfourier) 
 #     print(xfourier)
     
     # Select the x,y frequencies for the Fourier modes to calibrate the dark hole region
-    fourier_grid_mask = ( (intp(xfourier, xfourier) * (((fourier_x!=0) + (fourier_y!=0)) > 0)) > 0 ).T
+    fourier_grid_mask = ( (intp(xfourier, xfourier) * (((fourier_x!=0) + (fourier_y!=0)) > 0)) > 0 )
 #     misc.myimshow(fourier_grid_mask)
     
     fxs = fourier_x.ravel()[fourier_grid_mask.ravel()]
@@ -258,10 +242,29 @@ def select_fourier_modes(sysi, control_mask, fourier_sampling=0.75):
         fy = f[1]/sysi.Nact
         cos_modes.append( ( np.cos(2 * np.pi * (fx * ppx + fy * ppy)) * sysi.dm_mask ).flatten() ) 
         sin_modes.append( ( np.sin(2 * np.pi * (fx * ppx + fy * ppy)) * sysi.dm_mask ).flatten() )
-    modes = cos_modes + sin_modes
+    if use=='both' or use=='b':
+        modes = cos_modes + sin_modes
+    elif use=='cos' or use=='c':
+        modes = cos_modes
+    elif use=='sin' or use=='s':
+        modes = sin_modes
     return np.array(modes), sampled_fs
 
-def fourier_mode(lambdaD_yx, rms=1, acts_per_D_yx=(48,48), Nact=48, phase=0):
+def create_fourier_probes(fourier_modes, Nact=34, plot=False): 
+    # make 2 probe modes from the sum of the cos and sin fourier modes
+    nfs = fourier_modes.shape[0]//2
+    probe1 = fourier_modes[:nfs].sum(axis=0).reshape(Nact,Nact)
+    probe2 = fourier_modes[nfs:].sum(axis=0).reshape(Nact,Nact)
+
+    probe1 /= probe1.max()
+    probe2 /= probe2.max()
+
+    probe_modes = np.array([probe1,probe2])
+    probe_modes.shape
+    
+    return probe_modes
+
+def fourier_mode(lambdaD_yx, rms=1, acts_per_D_yx=(34,34), Nact=34, phase=0):
     '''
     Allow linear combinations of sin/cos to rotate through the complex space
     * phase = 0 -> pure cos
@@ -278,18 +281,74 @@ def fourier_mode(lambdaD_yx, rms=1, acts_per_D_yx=(48,48), Nact=48, phase=0):
     
     return prefactor * np.cos(arg + phase)
 
+
 def create_probe_poke_modes(Nact, 
-                            xinds,
-                            yinds,
-                            display=False):
-    probe_modes = np.zeros((len(xinds), Nact, Nact))
-    for i in range(len(xinds)):
-        probe_modes[i, yinds[i], xinds[i]] = 1
-    
-    if display:
-        if len(xinds)==2:
-            misc.imshow2(probe_modes[0], probe_modes[1])
-        elif len(xinds)==3:
-            misc.imshow3(probe_modes[0], probe_modes[1], probe_modes[2])
+                            poke_indices):
+    Nprobes = len(poke_indices)
+    probe_modes = np.zeros((Nprobes, Nact, Nact))
+    for i in range(Nprobes):
+        probe_modes[i, poke_indices[i][1], poke_indices[i][0]] = 1
             
     return probe_modes
+    
+    
+def create_sinc_probe(Nacts, amp, probe_radius, probe_phase=0, offset=(0,0), bad_axis='x'):
+    print('Generating probe with amplitude={:.3e}, radius={:.1f}, phase={:.3f}, offset=({:.1f},{:.1f}), with discontinuity along '.format(amp, probe_radius, probe_phase, offset[0], offset[1]) + bad_axis + ' axis.')
+    
+    xacts = np.arange( -(Nacts-1)/2, (Nacts+1)/2 )/Nacts - np.round(offset[0])/Nacts
+    yacts = np.arange( -(Nacts-1)/2, (Nacts+1)/2 )/Nacts - np.round(offset[1])/Nacts
+    Xacts,Yacts = np.meshgrid(xacts,yacts)
+    if bad_axis=='x': 
+        fX = 2*probe_radius
+        fY = probe_radius
+        omegaY = probe_radius/2
+        probe_commands = amp * np.sinc(fX*Xacts)*np.sinc(fY*Yacts) * np.cos(2*np.pi*omegaY*Yacts + probe_phase)
+    elif bad_axis=='y': 
+        fX = probe_radius
+        fY = 2*probe_radius
+        omegaX = probe_radius/2
+        probe_commands = amp * np.sinc(fX*Xacts)*np.sinc(fY*Yacts) * np.cos(2*np.pi*omegaX*Xacts + probe_phase) 
+    if probe_phase == 0:
+        f = 2*probe_radius
+        probe_commands = amp * np.sinc(f*Xacts)*np.sinc(f*Yacts)
+    return probe_commands
+
+def create_sinc_probes(Npairs, Nacts, dm_mask, probe_amplitude, probe_radius=10, probe_offset=(0,0), display=False):
+    
+    probe_phases = np.linspace(0, np.pi*(Npairs-1)/Npairs, Npairs)
+    
+    probes = []
+    for i in range(Npairs):
+        if i%2==0:
+            axis = 'x'
+        else:
+            axis = 'y'
+            
+        probe = create_sinc_probe(Nacts, probe_amplitude, probe_radius, probe_phases[i], offset=probe_offset, bad_axis=axis)
+            
+        probes.append(probe*dm_mask)
+    
+    return np.array(probes)
+    
+def get_radial_dist(shape, scaleyx=(1.0, 1.0), cenyx=None):
+    '''
+    Compute the radial separation of each pixel
+    from the center of a 2D array, and optionally 
+    scale in x and y.
+    '''
+    indices = np.indices(shape)
+    if cenyx is None:
+        cenyx = ( (shape[0] - 1) / 2., (shape[1] - 1)  / 2.)
+    radial = np.sqrt( (scaleyx[0]*(indices[0] - cenyx[0]))**2 + (scaleyx[1]*(indices[1] - cenyx[1]))**2 )
+    return radial
+
+def get_radial_contrast(im, mask, nbins=50, cenyx=None):
+    radial = get_radial_dist(im.shape, cenyx=cenyx)
+    bins = np.linspace(0, radial.max(), num=nbins, endpoint=True)
+    digrad = np.digitize(radial, bins)
+    profile = np.asarray([np.mean(im[ (digrad == i) & mask]) for i in np.unique(digrad)])
+    return bins, profile
+    
+    
+    
+    

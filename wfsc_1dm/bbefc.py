@@ -8,12 +8,12 @@ from importlib import reload
 from IPython.display import clear_output
 import time
 import copy
-from importlib import reload
 
+import poppy
+
+from esc_coro_suite import pwp, misc
 from . import utils
-from . import pwp_1dm as pwp
 reload(pwp)
-reload(utils)
 
 from cgi_phasec_poppy import misc
 
@@ -39,13 +39,13 @@ def build_jacobian(sysi, wavelengths, epsilon, dark_mask, display=False):
                 for amp in amps:
                     mode = mode.reshape(sysi.Nact,sysi.Nact)
 
-                    sysi.add_dm1(amp*mode)
+                    sysi.add_dm(amp*mode)
 
                     psf = sysi.calc_psf()
                     wavefront = psf.wavefront
                     response += amp*wavefront/np.var(amps)
 
-                    sysi.add_dm1(-amp*mode)
+                    sysi.add_dm(-amp*mode)
 
                 if display:
                     misc.myimshow2(cp.abs(response), cp.angle(response))
@@ -96,7 +96,7 @@ def run_efc_perfect(sysi,
     
     N_DH = dark_mask.sum()
     
-    dm_ref = sysi.get_dm1()
+    dm_ref = sysi.get_dm()
     dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
     print()
     for i in range(iterations+1):
@@ -108,7 +108,7 @@ def run_efc_perfect(sysi,
             print('\tComputing EFC matrix via ' + reg_fun.__name__ + ' with condition value {:.2e}'.format(reg_cond))
             efc_matrix = reg_fun(jac, reg_cond).get()
         
-        sysi.set_dm1(dm_ref + dm_command) 
+        sysi.set_dm(dm_ref + dm_command) 
         
         psf_bb = 0
         electric_fields = [] # contains the e-field for each discrete wavelength
@@ -118,7 +118,7 @@ def run_efc_perfect(sysi,
             electric_fields.append(psf.wavefront[dark_mask].get())
             psf_bb += psf.intensity.get()
             
-        commands.append(sysi.get_dm1())
+        commands.append(sysi.get_dm())
         images.append(copy.copy(psf_bb))
         
         for j in range(len(wavelengths)):
@@ -141,8 +141,6 @@ def run_efc_perfect(sysi,
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
     return commands, images
-
-
 
 def run_efc_pwp(sysi, 
                 wavelengths,
@@ -174,7 +172,7 @@ def run_efc_pwp(sysi,
     
     N_DH = dark_mask.sum()
     
-    dm_ref = sysi.get_dm1()
+    dm_ref = sysi.get_dm()
     dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
     for i in range(iterations+1):
         print('\tRunning iteration {:d}/{:d}.'.format(i+1, iterations))
@@ -185,23 +183,26 @@ def run_efc_pwp(sysi,
             print('\tComputing EFC matrix via ' + reg_fun.__name__ + ' with condition value {:.2e}'.format(reg_cond))
             efc_matrix = reg_fun(jac_cp, reg_cond).get()
         
-        sysi.set_dm1(dm_ref + dm_command)
-#         E_ests = pwp.run_pwp_broad(sysi, wavelengths, probes, dark_mask, use='j', jacobian=jac/2)
-        E_ests = pwp.run_pwp_broad(sysi, wavelengths, probes, dark_mask, use='m', model=sysi)
-        I_exact = sysi.snap()
-        
-        I_exact = 0
+        sysi.set_dm(dm_ref + dm_command)
+        E_ests = pwp.run_pwp_broad(sysi, wavelengths, probes, dark_mask, use='j', jacobian=jac/2)
         I_est = 0
+        for j in range(len(wavelengths)):
+            I_est += np.abs(E_ests[j])**2/len(wavelengths)
+            
+        if sysi.is_model:
+            I_exact = 0
+            for wavelength in wavelengths:
+                sysi.wavelength = wavelength
+                I_exact += sysi.snap()/len(wavelengths)
+        else:
+            I_exact = sysi.snap()
+            
         for j in range(len(wavelengths)):
             xnew = np.concatenate( (E_ests[j][dark_mask].real, E_ests[j][dark_mask].imag) )
             x = xnew if j==0 else np.concatenate( (x,xnew) )
-            
-            I_est += np.abs(E_ests[j])**2/len(wavelengths)
-            I_exact += sysi.snap()/len(wavelengths)
-#         efield_ri = np.concatenate( (E_est[dark_mask].real, E_est[dark_mask].imag) )
         del_dm = efc_matrix.dot(x).reshape(sysi.Nact,sysi.Nact)
         
-        commands.append(sysi.get_dm1())
+        commands.append(sysi.get_dm())
         efields.append(copy.copy(E_ests))
         
         images.append(copy.copy(I_exact))
@@ -221,5 +222,3 @@ def run_efc_pwp(sysi,
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
     return commands, efields, images
-
-

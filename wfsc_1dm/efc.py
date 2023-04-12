@@ -1,21 +1,23 @@
 import numpy as np
-import cupy as cp
+try:
+    import cupy as cp
+    cp.cuda.Device(0).compute_capability
+    xp = cp
+except ImportError:
+    xp = np
+    
+import poppy
+    
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.colors import LogNorm
+
 import astropy.units as u
-from astropy.io import fits
-from pathlib import Path
-from importlib import reload
-from IPython.display import clear_output
 import time
 import copy
-from importlib import reload
+from IPython.display import display, clear_output
 
-from . import pwp
 from . import utils
-reload(pwp)
-reload(utils)
-
-import misc_funs as misc
 
 def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
     start = time.time()
@@ -27,12 +29,12 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
         dm_mask[sysi.bad_acts] = False
     
     Nacts = int(dm_mask.sum())
-    nmask = int(dark_mask.sum())
+    Ndh = int(dark_mask.sum())
     
     num_modes = sysi.Nact**2
     modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
     
-    responses = np.zeros((2*nmask, Nacts))
+    responses = xp.zeros((2*Ndh, Nacts))
     count = 0
     for i in range(num_modes):
         if dm_mask[i]:
@@ -44,9 +46,6 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
                 wavefront = sysi.calc_psf()
                 response += amp*wavefront.flatten()/np.var(amps)
                 sysi.add_dm(-amp*mode)
-
-            if display:
-                misc.imshow2(np.abs(response), np.angle(response))
                 
             responses[::2,count] = response[dark_mask].real
             responses[1::2,count] = response[dark_mask].imag
@@ -68,8 +67,8 @@ def run_efc_perfect(sysi,
                     Imax_unocc=1,
                     efc_loop_gain=0.5, 
                     iterations=5, 
-                    display_all=False, 
-                    display_current=True,
+                    plot_all=False, 
+                    plot_current=True,
                     plot_sms=True):
     # This function is only for running EFC simulations
     print('Beginning closed-loop EFC simulation.')    
@@ -78,12 +77,12 @@ def run_efc_perfect(sysi,
     
     start = time.time()
     
-    U, s, V = np.linalg.svd(jac, full_matrices=False)
-    alpha2 = np.max( np.diag( np.real( jac.conj().T @ jac ) ) )
+    U, s, V = xp.linalg.svd(jac, full_matrices=False)
+    alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
     print('Max singular value squared:\t', s.max()**2)
     print('alpha^2:\t\t\t', alpha2) 
     
-    N_DH = dark_mask.sum()
+    Ndh = int(dark_mask.sum())
     
     dm_mask = sysi.dm_mask.flatten()
     if hasattr(sysi, 'bad_acts'):
@@ -109,25 +108,39 @@ def run_efc_perfect(sysi,
             commands.append(sysi.get_dm())
             efields.append(copy.copy(electric_field))
 
-            efield_ri = np.zeros(2*dark_mask.sum())
+            efield_ri = xp.zeros(2*Ndh)
             efield_ri[::2] = electric_field[dark_mask].real
             efield_ri[1::2] = electric_field[dark_mask].imag
             del_dm = -efc_matrix.dot(efield_ri)
 
-            del_dm = utils.map_acts_to_dm(del_dm, dm_mask)
+            del_dm = utils.map_acts_to_dm(del_dm.get(), dm_mask)
             dm_command += efc_loop_gain * del_dm
             
-            if display_current or display_all:
+            if plot_current or plot_all:
                 if not display_all: clear_output(wait=True)
-                    
-                fig,ax = misc.imshow2(commands[i], np.abs(electric_field)**2, 
-                                        'DM', 'Image: Iteration {:d}'.format(i),
-                                        cmap1='viridis',
-                                        lognorm2=True, vmin2=(np.abs(electric_field)**2).max()/1e7,
-                                        pxscl2=sysi.psf_pixelscale_lamD,
-                                        return_fig=True, display_fig=True)
+                
+                im_ext = [-sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD,
+                          -sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD]
+                
+                fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(10,4), dpi=125)
+                
+                im = ax[0].imshow(commands[i])
+                ax[0].set_title('DM Command')
+                divider = make_axes_locatable(ax[0])
+                cax = divider.append_axes("right", size="4%", pad=0.075)
+                fig.colorbar(im, cax=cax)
+                
+                im = ax[1].imshow(utils.ensure_np_array(np.abs(electric_field)**2), cmap='magma', norm=LogNorm(), extent=im_ext)
+                ax[1].set_title('Image: Iteration {:d}'.format(i))
+                divider = make_axes_locatable(ax[1])
+                cax = divider.append_axes("right", size="4%", pad=0.075)
+                fig.colorbar(im, cax=cax)
+                
+                plt.close()
+                display(fig)
+                
                 if plot_sms:
-                    sms_fig = utils.sms(U, s, alpha2, efield_ri, N_DH, Imax_unocc, i)
+                    sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
         except KeyboardInterrupt:
             print('EFC interrupted.')
             break
@@ -205,11 +218,32 @@ def run_efc_pwp(sysi,
                 if not display_all: clear_output(wait=True)
                     
                 print('Estimation and exact image match factor is {:.3f}'.format(mf))
-                misc.imshow3(commands[i], np.abs(E_est)**2, I_exact, 
-                            'DM', 'Estimated Intensity', 'Image: Iteration {:d}'.format(i),
-                            cmap1='viridis',
-                            lognorm2=True, lognorm3=True,
-                            pxscl2=sysi.psf_pixelscale_lamD, pxscl3=sysi.psf_pixelscale_lamD)
+                fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(10,4), dpi=125)
+                im = ax[0].imshow(commands[i], cmap='viridis')
+                ax[0].set_title('DM Command')
+                divider = make_axes_locatable(ax[0])
+                cax = divider.append_axes("right", size="4%", pad=0.075)
+                fig.colorbar(im, cax=cax)
+    
+                im = ax[1].imshow(I_est, 
+                                 norm=LogNorm(vmin=(np.abs(electric_field)**2).max()/1e7),
+                                 extent=extent)
+                ax[1].set_title('Estimated Intesnity'.format(i))
+                divider = make_axes_locatable(ax[1])
+                cax = divider.append_axes("right", size="4%", pad=0.075)
+                fig.colorbar(im, cax=cax)
+                
+                im = ax[2].imshow(I_exact, 
+                                 norm=LogNorm(vmin=(np.abs(electric_field)**2).max()/1e7),
+                                 extent=[-sysi.npsf//2*sysi.psf_pixelscale_lamD,
+                                         sysi.npsf//2*sysi.psf_pixelscale_lamD,
+                                         -sysi.npsf//2*sysi.psf_pixelscale_lamD,
+                                         sysi.npsf//2*sysi.psf_pixelscale_lamD])
+                ax[2].set_title('Image: Iteration {:d}'.format(i))
+                divider = make_axes_locatable(ax[2])
+                cax = divider.append_axes("right", size="4%", pad=0.075)
+                fig.colorbar(im, cax=cax)
+                
                 if plot_sms:
                     sms_fig = utils.sms(U, s, alpha2, efield_ri, N_DH, Imax_unocc, i)
         except KeyboardInterrupt:
@@ -219,5 +253,3 @@ def run_efc_pwp(sysi,
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
     return commands, efields, images
-
-

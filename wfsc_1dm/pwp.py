@@ -1,6 +1,19 @@
 import numpy as np
-import cupy as cp
+import poppy
+if poppy.accel_math._USE_CUPY:
+    import cupy as cp
+    import cupyx.scipy
+    xp = cp
+    _scipy = cupyx.scipy
+else:
+    xp = np
+    import scipy
+    _scipy = scipy
+    
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 import astropy.units as u
 from astropy.io import fits
 from pathlib import Path
@@ -13,63 +26,12 @@ from importlib import reload
 from . import utils
 reload(utils)
 
-import misc_funs as misc
-
-def create_sinc_probe(Nacts, amp, probe_radius, probe_phase=0, offset=(0,0), bad_axis='x'):
-    print('Generating probe with amplitude={:.3e}, radius={:.1f}, phase={:.3f}, offset=({:.1f},{:.1f}), with discontinuity along '.format(amp, probe_radius, probe_phase, offset[0], offset[1]) + bad_axis + ' axis.')
-    
-    xacts = np.arange( -(Nacts-1)/2, (Nacts+1)/2 )/Nacts - np.round(offset[0])/Nacts
-    yacts = np.arange( -(Nacts-1)/2, (Nacts+1)/2 )/Nacts - np.round(offset[1])/Nacts
-    Xacts,Yacts = np.meshgrid(xacts,yacts)
-    if bad_axis=='x': 
-        fX = 2*probe_radius
-        fY = probe_radius
-        omegaY = probe_radius/2
-        probe_commands = amp * np.sinc(fX*Xacts)*np.sinc(fY*Yacts) * np.cos(2*np.pi*omegaY*Yacts + probe_phase)
-    elif bad_axis=='y': 
-        fX = probe_radius
-        fY = 2*probe_radius
-        omegaX = probe_radius/2
-        probe_commands = amp * np.sinc(fX*Xacts)*np.sinc(fY*Yacts) * np.cos(2*np.pi*omegaX*Xacts + probe_phase) 
-    if probe_phase == 0:
-        f = 2*probe_radius
-        probe_commands = amp * np.sinc(f*Xacts)*np.sinc(f*Yacts)
-    return probe_commands
-
-def create_sinc_probes(Npairs, Nacts, dm_mask, probe_amplitude, probe_radius=10, probe_offset=(0,0), display=False):
-    
-    probe_phases = np.linspace(0, np.pi*(Npairs-1)/Npairs, Npairs)
-    
-    probes = []
-    for i in range(Npairs):
-        if i%2==0:
-            axis = 'x'
-        else:
-            axis = 'y'
-            
-        probe = create_sinc_probe(Nacts, probe_amplitude, probe_radius, probe_phases[i], offset=probe_offset, bad_axis=axis)
-            
-        probes.append(probe*dm_mask)
-    
-    if display:
-        if Npairs==2:
-            misc.imshow2(probes[0], probes[1])
-        elif Npairs==3:
-            misc.imshow3(probes[0], probes[1], probes[2])
-    
-    return np.array(probes)
-
-
-def run_pwp_bp(sysi, dark_mask, 
+def run_pwp_bp(sysi, 
+               dark_mask, 
                probes,
-               use, jacobian=None, model=None, 
-               display=False, display_probe_field=False):
-    nmask = dark_mask.sum()
-    
-    dm_mask = sysi.dm_mask.flatten()
-    if hasattr(sysi, 'bad_acts'):
-        dm_mask[sysi.bad_acts] = False
-    act_inds = np.where(dm_mask.astype(int))[0]
+               use='J', jacobian=None, model=None, 
+               plot=False):
+    Ndh = int(dark_mask.sum())
     
     dm_ref = sysi.get_dm()
     amps = np.linspace(-1, 1, 2) # for generating a negative and positive probe
@@ -88,18 +50,38 @@ def run_pwp_bp(sysi, dark_mask,
                 
             sysi.add_dm(-amp*probe) # remove probe from DM
             
-        if display:
-            misc.imshow3(Ip[i], In[i], Ip[i]-In[i],
-                           'Probe {:d} Positive Image'.format(i+1), 'Probe {:d} Negative Image'.format(i+1),
-                           'Intensity Difference',
-                           lognorm1=True, lognorm2=True, vmin1=Ip[i].max()/1e6, vmin2=In[i].max()/1e6,
-                          )
-        
-    E_probes = np.zeros((probes.shape[0], 2*nmask))
-    I_diff = np.zeros((probes.shape[0], nmask))
+        if plot:
+            im_ext = [-sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD,
+                      -sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD]
+            
+            fig,ax = plt.subplots(nrows=1, ncols=3, figsize=(10,4), dpi=125)
+            
+            im = ax[0].imshow(utils.ensure_np_array(Ip[i]), cmap='magma', extent=im_ext, norm=LogNorm())
+            ax[0].set_title('Positive Probe Image')
+            divider = make_axes_locatable(ax[0])
+            cax = divider.append_axes("right", size="4%", pad=0.075)
+            fig.colorbar(im, cax=cax)
+            
+            im = ax[1].imshow(utils.ensure_np_array(In[i]), cmap='magma', extent=im_ext, norm=LogNorm())
+            ax[1].set_title('Negative Probe Image')
+            divider = make_axes_locatable(ax[1])
+            cax = divider.append_axes("right", size="4%", pad=0.075)
+            fig.colorbar(im, cax=cax)
+            
+            im = ax[2].imshow(utils.ensure_np_array(Ip[i]-In[i]), cmap='magma', extent=im_ext)
+            ax[2].set_title('Difference')
+            divider = make_axes_locatable(ax[2])
+            cax = divider.append_axes("right", size="4%", pad=0.075)
+            fig.colorbar(im, cax=cax)
+            
+            plt.close()
+            display(fig)
+            
+    E_probes = xp.zeros((probes.shape[0], 2*Ndh))
+    I_diff = xp.zeros((probes.shape[0], Ndh))
     for i in range(len(probes)):
-        if (use=='jacobian' or use=='j') and jacobian is not None:
-            E_probe = jacobian.dot(np.array(probes[i][sysi.dm_mask])) 
+        if (use=='jacobian' or use.lower()=='j') and jacobian is not None:
+            E_probe = jacobian.dot(xp.array(probes[i][sysi.dm_mask])) 
             E_probe = E_probe[::2] + 1j*E_probe[1::2]
         elif (use=='model' or use=='m') and model is not None:
             if i==0: E_full = model.calc_psf().wavefront.get()[dark_mask]
@@ -110,29 +92,45 @@ def run_pwp_bp(sysi, dark_mask,
             
             E_probe = E_full_probe - E_full
             
-        if display_probe_field:
-            E_probe_2d = np.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
-            np.place(E_probe_2d, mask=dark_mask, vals=E_probe)
-            misc.imshow2(np.abs(E_probe_2d), np.angle(E_probe_2d), 'E_probe Amp', 'E_probe Phase')
-        
+        if plot:
+            import misc_funs as misc
+            E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
+            xp.place(E_probe_2d, mask=dark_mask, vals=E_probe)
+            fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(10,4), dpi=125)
+            
+            im = ax[0].imshow(utils.ensure_np_array(xp.abs(E_probe_2d)), cmap='magma', extent=im_ext)
+            ax[0].set_title('Probe Amplitude')
+            divider = make_axes_locatable(ax[0])
+            cax = divider.append_axes("right", size="4%", pad=0.075)
+            fig.colorbar(im, cax=cax)
+            
+            im = ax[1].imshow(utils.ensure_np_array(xp.angle(E_probe_2d)), cmap='magma', extent=im_ext)
+            ax[1].set_title('Probe Amplitude')
+            divider = make_axes_locatable(ax[1])
+            cax = divider.append_axes("right", size="4%", pad=0.075)
+            fig.colorbar(im, cax=cax)
+            
+            plt.close()
+            display(fig)
+            
         E_probes[i, ::2] = E_probe.real
         E_probes[i, 1::2] = E_probe.imag
-        I_diff[i, :] = (Ip[i] - In[i])[dark_mask]
+
+        I_diff[i:(i+1), :] = (Ip[i] - In[i])[dark_mask]
     
     # Use batch process to estimate each pixel individually
-    E_est = np.zeros((nmask,), dtype=cp.complex128)
-    for i in range(nmask):
+    E_est = np.zeros(Ndh, dtype=cp.complex128)
+    for i in range(Ndh):
         delI = I_diff[:, i]
-#         M = 4*np.array([E_probes[:,i], E_probes[:,i+nmask]]).T
-        M = 4*np.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
-        Minv = np.linalg.pinv(M.T@M, 1e-1)@M.T
+        M = 4*xp.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
+        Minv = xp.linalg.pinv(M.T@M, 1e-2)@M.T
     
         est = Minv.dot(delI)
 
         E_est[i] = est[0] + 1j*est[1]
         
-    E_est_2d = np.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
-    np.place(E_est_2d, mask=dark_mask, vals=E_est)
+    E_est_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
+    xp.place(E_est_2d, mask=dark_mask, vals=E_est)
     
     return E_est_2d
 
@@ -144,14 +142,14 @@ def run_pwp_redmond(sysi, dark_mask,
     nmask = dark_mask.sum()
     nprobes = probes.shape[0]
     
-    dm_ref = sysi.get_dm1()
+    dm_ref = sysi.get_dm()
     amps = np.linspace(-1, 1, 2) # for generating a negative and positive probe
     
     Ip = []
     In = []
     for i,probe in enumerate(probes):
         for amp in amps:
-            sysi.add_dm1(amp*probe)
+            sysi.add_dm(amp*probe)
             
             im = sysi.snap()
                 
@@ -160,10 +158,10 @@ def run_pwp_redmond(sysi, dark_mask,
             else: 
                 Ip.append(im)
                 
-            sysi.add_dm1(-amp*probe) # remove probe from DM
+            sysi.add_dm(-amp*probe) # remove probe from DM
             
         if display:
-            misc.imshow3(Ip[i], In[i], Ip[i]-In[i],
+            misc.myimshow3(Ip[i], In[i], Ip[i]-In[i],
                            'Probe {:d} Positive Image'.format(i+1), 'Probe {:d} Negative Image'.format(i+1),
                            'Intensity Difference',
                            lognorm1=True, lognorm2=True, vmin1=Ip[i].max()/1e6, vmin2=In[i].max()/1e6,
@@ -179,9 +177,9 @@ def run_pwp_redmond(sysi, dark_mask,
         elif (use=='model' or use=='m') and model is not None:
             if i==0: E_full = model.calc_psf().wavefront.get()[dark_mask]
                 
-            model.add_dm1(probes[i])
+            model.add_dm(probes[i])
             E_full_probe = model.calc_psf().wavefront.get()[dark_mask]
-            model.add_dm1(-probes[i])
+            model.add_dm(-probes[i])
             
             E_probe = E_full_probe - E_full
             E_probe = np.concatenate((E_probe.real, E_probe.imag))
@@ -191,10 +189,10 @@ def run_pwp_redmond(sysi, dark_mask,
         E_probe_2d = np.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
         np.place(E_probe_2d, mask=dark_mask, 
                  vals=E_probes[i*2*nmask : (i+1)*2*nmask ][:nmask] + 1j*E_probes[i*2*nmask : (i+1)*2*nmask ][nmask:])
-        misc.imshow2(np.abs(E_probe_2d), np.angle(E_probe_2d), 'E_probe Amp', 'E_probe Phase')
+        misc.myimshow2(np.abs(E_probe_2d), np.angle(E_probe_2d), 'E_probe Amp', 'E_probe Phase')
         
     B = np.diag(np.ones((nmask,2*nmask))[0], k=0)[:nmask,:2*nmask] + np.diag(np.ones((nmask,2*nmask))[0], k=nmask)[:nmask,:2*nmask]
-    misc.imshow(B, figsize=(10,4))
+    misc.myimshow(B, figsize=(10,4))
     print('B.shape', B.shape)
     
     for i in range(nprobes):
@@ -229,7 +227,7 @@ def run_pwp_2011(sysi, dark_mask,
     In = []
     for i,probe in enumerate(probes):
         for amp in amps:
-            sysi.add_dm1(amp*probe)
+            sysi.add_dm(amp*probe)
             
             im = sysi.snap()
                 
@@ -238,10 +236,10 @@ def run_pwp_2011(sysi, dark_mask,
             else: 
                 Ip.append(im)
                 
-            sysi.add_dm1(-amp*probe) # remove probe from DM
+            sysi.add_dm(-amp*probe) # remove probe from DM
             
         if display:
-            misc.imshow3(Ip[i], In[i], Ip[i]-In[i],
+            misc.myimshow3(Ip[i], In[i], Ip[i]-In[i],
                            'Probe {:d} Positive Image'.format(i+1), 'Probe {:d} Negative Image'.format(i+1),
                            'Intensity Difference',
                            lognorm1=True, lognorm2=True, vmin1=Ip[i].max()/1e6, vmin2=In[i].max()/1e6,

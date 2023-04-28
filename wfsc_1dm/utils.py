@@ -20,8 +20,6 @@ import pickle
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Rectangle
 
-import misc_funs as misc
-
 def ensure_np_array(arr):
     if poppy.accel_math._USE_CUPY and isinstance(arr, cp.ndarray):
         return arr.get()

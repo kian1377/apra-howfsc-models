@@ -1,4 +1,5 @@
 import numpy as np
+import scipy
 import astropy.units as u
 from astropy.io import fits
 from pathlib import Path
@@ -13,11 +14,21 @@ pupil = PlaneType.pupil
 inter = PlaneType.intermediate
 image = PlaneType.image
 
-import cupy as cp
-import cupyx.scipy.ndimage
+if poppy.accel_math._USE_CUPY:
+    import cupy as cp
+    import cupyx.scipy as _scipy
+    xp = cp
+else: 
+    cp = None
+    xp = np
+    _scipy = scipy
 
-import misc_funs as misc
-
+def ensure_np_array(arr):
+    if isinstance(arr, np.ndarray):
+        return arr
+    else:
+        return arr.get()
+    
 class CORO():
 
     def __init__(self, 
@@ -105,8 +116,11 @@ class CORO():
         r = np.sqrt(x**2 + y**2)
         self.dm_mask[r>10.5] = 0 # had to set the threshold to 10.5 instead of 10.2 to include edge actuators
         
-        self.dm_zernikes = poppy.zernike.arbitrary_basis(cp.array(self.dm_mask), nterms=15, outside=0).get()
-        
+        if poppy.accel_math._USE_CUPY:
+            self.dm_zernikes = poppy.zernike.arbitrary_basis(xp.array(self.dm_mask), nterms=15, outside=0).get()
+        else: 
+            self.dm_zernikes = poppy.zernike.arbitrary_basis(xp.array(self.dm_mask), nterms=15, outside=0)
+            
         self.DM = poppy.ContinuousDeformableMirror(dm_shape=(self.Nact,self.Nact), name='DM', 
                                                    actuator_spacing=self.act_spacing, 
                                                    influence_func=self.dm_inf,
@@ -122,12 +136,7 @@ class CORO():
         self.DM.set_surface(self.get_dm() + dm_command)
         
     def get_dm(self):
-        return self.DM.surface.get()
-    
-    def show_dm(self):
-        wf = poppy.FresnelWavefront(beam_radius=self.dm_active_diam/2, npix=self.npix, oversample=1)
-        misc.imshow2(self.get_dm(), self.DM.get_opd(wf), 'DM Command', 'DM Surface',
-                     pxscl2=wf.pixelscale.to(u.mm/u.pix))
+        return ensure_np_array(self.DM.surface)
     
     def oaefl(self, roc, oad, k=-1):
         """
@@ -206,17 +215,6 @@ class CORO():
         self.oap4_opd = poppy.StatisticalPSDWFE('OAP4 OPD', index=3.0, wfe=20*u.nm, radius=self.oap4_diam/2, seed=seed4)
         self.oap5_opd = poppy.StatisticalPSDWFE('OAP5 OPD', index=3.0, wfe=20*u.nm, radius=self.oap5_diam/2, seed=seed5)
         
-    def show_opds(self):
-        self.init_opds()
-        
-        wf = poppy.FresnelWavefront(beam_radius=self.dm_active_diam/2, npix=self.npix, oversample=1)
-        
-        misc.imshow1(self.oap1_opd.get_opd(wf), 'OAP1 OPD', pxscl=wf.pixelscale.to(u.mm/u.pix), xlabel='mm')
-        misc.imshow1(self.oap2_opd.get_opd(wf), 'OAP2 OPD', pxscl=wf.pixelscale.to(u.mm/u.pix), xlabel='mm')
-        misc.imshow1(self.oap3_opd.get_opd(wf), 'OAP3 OPD', pxscl=wf.pixelscale.to(u.mm/u.pix), xlabel='mm')
-        misc.imshow1(self.oap4_opd.get_opd(wf), 'OAP4 OPD', pxscl=wf.pixelscale.to(u.mm/u.pix), xlabel='mm')
-        misc.imshow1(self.oap5_opd.get_opd(wf), 'OAP5 OPD', pxscl=wf.pixelscale.to(u.mm/u.pix), xlabel='mm')
-        
     def init_inwave(self):
         inwave = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
                                         npix=self.npix, oversample=self.oversample)
@@ -239,20 +237,20 @@ class CORO():
         self.init_inwave()
         _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_final=True, return_intermediates=False)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        resamped_wf = self.rotate_and_interp_image(wf[0]).get()
+        resamped_wf = ensure_np_array(self.rotate_and_interp_image(wf[0]))
         return resamped_wf
     
     def snap(self): # method for getting the PSF in photons
         self.init_fosys()
         self.init_inwave()
         _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_intermediates=False, return_final=True)
-        image = (cp.abs(self.rotate_and_interp_image(wf[0]))**2).get()
+        image = ensure_np_array(xp.abs(self.rotate_and_interp_image(wf[0]))**2)
         return image
     
     def rotate_and_interp_image(self, im_wf):
         wavefront = im_wf.wavefront
-        wavefront_r = cupyx.scipy.ndimage.rotate(cp.real(wavefront), angle=-self.det_rotation, reshape=False, order=0)
-        wavefront_i = cupyx.scipy.ndimage.rotate(cp.imag(wavefront), angle=-self.det_rotation, reshape=False, order=0)
+        wavefront_r = _scipy.ndimage.rotate(xp.real(wavefront), angle=-self.det_rotation, reshape=False, order=1)
+        wavefront_i = _scipy.ndimage.rotate(xp.imag(wavefront), angle=-self.det_rotation, reshape=False, order=1)
         
         im_wf.wavefront = wavefront_r + 1j*wavefront_i
         
@@ -261,7 +259,7 @@ class CORO():
     
     def interp_wf(self, wave): # this will interpolate the FresnelWavefront data to match the desired pixelscale
         n = wave.wavefront.shape[0]
-        xs = (cp.linspace(0, n-1, n))*wave.pixelscale.to(u.m/u.pix).value
+        xs = (xp.linspace(0, n-1, n))*wave.pixelscale.to(u.m/u.pix).value
         
         extent = self.npsf*self.psf_pixelscale.to(u.m/u.pix).value
         
@@ -270,14 +268,14 @@ class CORO():
                 newn = i
                 break
         newn += 2
-        cropped_wf = misc.pad_or_crop(wave.wavefront, newn)
+        cropped_wf = poppy.utils.pad_or_crop_to_shape(wave.wavefront, (newn,newn))
 
         wf_xmax = wave.pixelscale.to(u.m/u.pix).value * newn/2
-        x,y = cp.ogrid[-wf_xmax:wf_xmax:cropped_wf.shape[0]*1j,
+        x,y = xp.ogrid[-wf_xmax:wf_xmax:cropped_wf.shape[0]*1j,
                        -wf_xmax:wf_xmax:cropped_wf.shape[1]*1j]
 
         det_xmax = extent/2
-        newx,newy = cp.mgrid[-det_xmax:det_xmax:self.npsf*1j,
+        newx,newy = xp.mgrid[-det_xmax:det_xmax:self.npsf*1j,
                              -det_xmax:det_xmax:self.npsf*1j]
         x0 = x[0,0]
         y0 = y[0,0]
@@ -287,9 +285,9 @@ class CORO():
         ivals = (newx - x0)/dx
         jvals = (newy - y0)/dy
 
-        coords = cp.array([ivals, jvals])
+        coords = xp.array([ivals, jvals])
         
-        resamped_wf = cupyx.scipy.ndimage.map_coordinates(cropped_wf, coords, order=3)
+        resamped_wf = _scipy.ndimage.map_coordinates(cropped_wf, coords, order=3)
         
         m = (wave.pixelscale.to(u.m/u.pix)/self.psf_pixelscale.to(u.m/u.pix)).value
         resamped_wf /= m

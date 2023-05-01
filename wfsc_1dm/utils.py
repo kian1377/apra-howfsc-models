@@ -21,16 +21,29 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Rectangle
 
 def ensure_np_array(arr):
-    if poppy.accel_math._USE_CUPY and isinstance(arr, cp.ndarray):
-        return arr.get()
-    else:
+    if isinstance(arr, np.ndarray):
         return arr
+    else:
+        return arr.get()
 
+def save_fits(fpath, data, header=None, ow=True, quiet=False):
+    if header is not None:
+        keys = list(header.keys())
+        hdr = fits.Header()
+        for i in range(len(header)):
+            hdr[keys[i]] = header[keys[i]]
+    else: 
+        hdr = None
+    data = ensure_np_array(data)
+    hdu = fits.PrimaryHDU(data=data, header=hdr)
+    hdu.writeto(str(fpath), overwrite=ow) 
+    if not quiet: print('Saved data to: ', str(fpath))
+    
 def map_acts_to_dm(actuators, dm_mask, Nact=34):
-    inds = np.where(dm_mask.flatten().astype(int))[0]
+    inds = np.where(ensure_np_array(dm_mask).ravel().astype(int))[0]
     
     command = np.zeros((Nact, Nact))
-    command.ravel()[inds] = actuators
+    command.ravel()[inds] = ensure_np_array(actuators)
     
     return command
 
@@ -341,12 +354,26 @@ def get_radial_dist(shape, scaleyx=(1.0, 1.0), cenyx=None):
     return radial
 
 def get_radial_contrast(im, mask, nbins=50, cenyx=None):
+    im = ensure_np_array(im)
+    mask = ensure_np_array(mask)
     radial = get_radial_dist(im.shape, cenyx=cenyx)
     bins = np.linspace(0, radial.max(), num=nbins, endpoint=True)
     digrad = np.digitize(radial, bins)
     profile = np.asarray([np.mean(im[ (digrad == i) & mask]) for i in np.unique(digrad)])
     return bins, profile
     
-    
-    
+def plot_radial_contrast(im, mask, pixelscale, nbins=30, cenyx=None, xlims=None, ylims=None):
+    bins, contrast = get_radial_contrast(im, mask, nbins=nbins, cenyx=cenyx)
+    r = bins * pixelscale
+
+    fig,ax = plt.subplots(nrows=1, ncols=1, dpi=125, figsize=(6,4))
+    ax.semilogy(r,contrast)
+    ax.set_xlabel('radial position [$\lambda/D$]')
+    ax.set_ylabel('Contrast')
+    ax.grid()
+    if xlims is not None: ax.set_xlim(xlims[0], xlims[1])
+    if ylims is not None: ax.set_ylim(ylims[0], ylims[1])
+    plt.close()
+    display(fig)    
+
     

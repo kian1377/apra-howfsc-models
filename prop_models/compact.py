@@ -18,7 +18,7 @@ if poppy.accel_math._USE_CUPY:
     import cupy as cp
     import cupyx.scipy
     xp = cp
-    _scipy- cupyx.scipy
+    _scipy = cupyx.scipy
 else: 
     cp = None
     xp = np
@@ -168,63 +168,13 @@ class CORO():
         self.init_inwave()
         _, wf = self.osys.calc_psf(inwave=self.inwave, normalize=self.norm, return_final=True, return_intermediates=False)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        return ensure_np_array(wf[0].wavefront)
+        return wf[0].wavefront
     
     def snap(self): # method for getting the PSF in photons
         self.init_osys()
         self.init_inwave()
         _, wf = self.osys.calc_psf(inwave=self.inwave, normalize=self.norm, return_intermediates=False, return_final=True)
-        image = ensure_np_array(wf[0].intensity)
-        return image
+        return wf[0].intensity
     
-    def rotate_and_interp_image(self, im_wf):
-        wavefront = im_wf.wavefront
-        wavefront_r = _scipy.ndimage.rotate(cp.real(wavefront), angle=-self.det_rotation, reshape=False, order=0)
-        wavefront_i = _scipy.ndimage.rotate(cp.imag(wavefront), angle=-self.det_rotation, reshape=False, order=0)
-        
-        im_wf.wavefront = wavefront_r + 1j*wavefront_i
-        
-        resamped_wf = self.interp_wf(im_wf)
-        return resamped_wf
-    
-    def interp_wf(self, wave): # this will interpolate the FresnelWavefront data to match the desired pixelscale
-        n = wave.wavefront.shape[0]
-        xs = (cp.linspace(0, n-1, n))*wave.pixelscale.to(u.m/u.pix).value
-        
-        extent = self.npsf*self.psf_pixelscale.to(u.m/u.pix).value
-        
-        for i in range(n):
-            if xs[i+1]>extent:
-                newn = i
-                break
-        newn += 2
-        cropped_wf = poppy.utils.pad_or_crop_to_shape(wave.wavefront, (newn,newn))
-
-        wf_xmax = wave.pixelscale.to(u.m/u.pix).value * newn/2
-        x,y = cp.ogrid[-wf_xmax:wf_xmax:cropped_wf.shape[0]*1j,
-                       -wf_xmax:wf_xmax:cropped_wf.shape[1]*1j]
-
-        det_xmax = extent/2
-        newx,newy = cp.mgrid[-det_xmax:det_xmax:self.npsf*1j,
-                             -det_xmax:det_xmax:self.npsf*1j]
-        x0 = x[0,0]
-        y0 = y[0,0]
-        dx = x[1,0] - x0
-        dy = y[0,1] - y0
-
-        ivals = (newx - x0)/dx
-        jvals = (newy - y0)/dy
-
-        coords = cp.array([ivals, jvals])
-        
-        resamped_wf = _scipy.ndimage.map_coordinates(cropped_wf, coords, order=3)
-        
-        m = (wave.pixelscale.to(u.m/u.pix)/self.psf_pixelscale.to(u.m/u.pix)).value
-        resamped_wf /= m
-        
-        return resamped_wf
-    
-    
-
 
 

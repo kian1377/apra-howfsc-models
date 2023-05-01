@@ -59,6 +59,7 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
     
     return responses
 
+
 def run_efc_perfect(sysi, 
                     jac, 
                     reg_fun,
@@ -69,7 +70,8 @@ def run_efc_perfect(sysi,
                     iterations=5, 
                     plot_all=False, 
                     plot_current=True,
-                    plot_sms=True):
+                    plot_sms=True,
+                    plot_contrast=True):
     # This function is only for running EFC simulations
     print('Beginning closed-loop EFC simulation.')    
     commands = []
@@ -117,7 +119,7 @@ def run_efc_perfect(sysi,
             dm_command += efc_loop_gain * del_dm
             
             if plot_current or plot_all:
-                if not display_all: clear_output(wait=True)
+                if not plot_all: clear_output(wait=True)
                 
                 im_ext = [-sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD,
                           -sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD]
@@ -141,6 +143,9 @@ def run_efc_perfect(sysi,
                 
                 if plot_sms:
                     sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
+                    
+                if plot_contrast:
+                    utils.plot_radial_contrast(np.abs(electric_field)**2, dark_mask, sysi.psf_pixelscale_lamD, nbins=30)
         except KeyboardInterrupt:
             print('EFC interrupted.')
             break

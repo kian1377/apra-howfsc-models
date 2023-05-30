@@ -1,11 +1,14 @@
 
 # Ignore .ZDA files
 *.ZDA
+*.fits
 
 # Ignore .ipynb_checkpoints
 .ipynb_checkpoints/
+__pycache__/
 
 # Ignore data for the jacobians and saved images
 jacobians/
 images/
-pupil-data/
+ote-wfe-data/
+phase-retrieval-data/

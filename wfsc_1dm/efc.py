@@ -71,7 +71,7 @@ def run_efc_perfect(sysi,
                     plot_all=False, 
                     plot_current=True,
                     plot_sms=True,
-                    plot_contrast=True):
+                    plot_radial_contrast=True):
     # This function is only for running EFC simulations
     print('Beginning closed-loop EFC simulation.')    
     commands = []
@@ -144,7 +144,7 @@ def run_efc_perfect(sysi,
                 if plot_sms:
                     sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
                     
-                if plot_contrast:
+                if plot_radial_contrast:
                     utils.plot_radial_contrast(np.abs(electric_field)**2, dark_mask, sysi.psf_pixelscale_lamD, nbins=30)
         except KeyboardInterrupt:
             print('EFC interrupted.')
@@ -164,9 +164,10 @@ def run_efc_pwp(sysi,
                 Imax_unocc=1,
                 efc_loop_gain=0.5, 
                 iterations=5, 
-                display_all=False, 
-                display_current=True,
-                plot_sms=True):
+                plot_all=False, 
+                plot_current=True,
+                plot_sms=True,
+                plot_radial_contrast=True):
     print('Beginning closed-loop EFC simulation.')
     
     commands = []

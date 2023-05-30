@@ -16,9 +16,8 @@ image = PlaneType.image
 
 if poppy.accel_math._USE_CUPY:
     import cupy as cp
-    import cupyx.scipy
+    import cupyx.scipy as _scipy
     xp = cp
-    _scipy = cupyx.scipy
 else: 
     cp = None
     xp = np
@@ -77,8 +76,8 @@ class CORO():
         
         self.norm = 'first'
         
-        self.RETRIEVED = poppy.ScalarTransmission(name='Retrieved WFE Place-holder') if RETRIEVED is None else RETRIEVED
         self.APODIZER = poppy.ScalarTransmission(name='Apodizer Place-holder') if APODIZER is None else APODIZER
+        self.RETRIEVED = poppy.ScalarTransmission(name='Retrieved WFE Place-holder') if RETRIEVED is None else RETRIEVED
         self.FPM = poppy.ScalarTransmission(name='FPM Place-holder') if FPM is None else FPM
         self.LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if LYOT is None else LYOT
         self.init_dm()
@@ -139,10 +138,11 @@ class CORO():
         osys.add_pupil(poppy.CircularAperture(radius=self.pupil_diam/2))
         osys.add_pupil(RETRIEVED)
         osys.add_pupil(self.DM)
+        osys.add_image(poppy.ScalarTransmission('Intermediate Image Plane'))
         osys.add_pupil(APODIZER)
         osys.add_image(FPM)
         osys.add_pupil(LYOT)
-        osys.add_detector(pixelscale=self.psf_pixelscale_as.value, fov_pixels=self.npsf /self.oversample)
+        osys.add_detector(pixelscale=self.psf_pixelscale_as.value, fov_pixels=self.npsf/self.oversample)
         
         self.osys = osys
         

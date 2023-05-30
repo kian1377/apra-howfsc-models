@@ -4,6 +4,7 @@ import scipy
 import astropy.units as u
 
 import matplotlib.pyplot as plt
+plt.rcParams['image.origin']='lower'
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import LogNorm, Normalize
 

@@ -136,12 +136,14 @@ class CORO():
         osys = poppy.OpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, oversample=self.oversample)
         
         osys.add_pupil(poppy.CircularAperture(radius=self.pupil_diam/2))
-        osys.add_pupil(RETRIEVED)
         osys.add_pupil(self.DM)
         osys.add_image(poppy.ScalarTransmission('Intermediate Image Plane'))
+        osys.add_pupil(RETRIEVED)
         osys.add_pupil(APODIZER)
         osys.add_image(FPM)
         osys.add_pupil(LYOT)
+        
+        self.psf_pixelscale_as = self.psf_pixelscale_lamD * self.as_per_lamD * self.oversample
         osys.add_detector(pixelscale=self.psf_pixelscale_as.value, fov_pixels=self.npsf/self.oversample)
         
         self.osys = osys

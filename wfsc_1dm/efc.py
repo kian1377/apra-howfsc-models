@@ -59,7 +59,6 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
     
     return responses
 
-
 def run_efc_perfect(sysi, 
                     jac, 
                     reg_fun,
@@ -152,7 +151,7 @@ def run_efc_perfect(sysi,
         
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
-    return commands, efields
+    return efields, commands
 
 def run_efc_pwp(sysi, 
                 pwp_fun,
@@ -258,4 +257,15 @@ def run_efc_pwp(sysi,
         
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
-    return commands, efields, images
+    return images, efields, commands
+
+def single_iteration(electric_field, control_matrix, dark_mask, dm_mask):
+    Ndh = int(dark_mask.sum())
+    efield_ri = xp.zeros(2*Ndh)
+    efield_ri[::2] = electric_field[dark_mask].real
+    efield_ri[1::2] = electric_field[dark_mask].imag
+    del_dm = -control_matrix.dot(efield_ri)
+
+    del_dm = utils.map_acts_to_dm(del_dm.get(), dm_mask)
+    
+    return del_dm

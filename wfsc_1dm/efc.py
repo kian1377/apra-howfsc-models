@@ -1,7 +1,7 @@
 import numpy as np
 try:
     import cupy as cp
-    cp.cuda.Device(0).compute_capability
+#     cp.cuda.Device(0).compute_capability
     xp = cp
 except ImportError:
     xp = np

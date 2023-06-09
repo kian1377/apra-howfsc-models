@@ -1,9 +1,12 @@
 import numpy as np
+import scipy
 
 try:
     import cupy as xp
+    import cupyx.scipy as _scipy
 except ImportError:
     import numpy as xp
+    import scipy as _scipy
     
 import astropy.units as u
 from astropy.io import fits
@@ -23,6 +26,12 @@ import cupyx.scipy.ndimage
 
 import misc_funs as misc
 
+def ensure_np_array(arr):
+    if isinstance(arr,np.ndarray):
+        return arr
+    else: 
+        return arr.get()
+
 class CORO():
 
     def __init__(self, 
@@ -30,15 +39,15 @@ class CORO():
                  npix=256, 
                  oversample=4,
                  npsf=100,
-                 psf_pixelscale=5e-6*u.m/u.pix,
-                 psf_pixelscale_lamD=None, 
+#                  psf_pixelscale=5e-6*u.m/u.pix,
+                 psf_pixelscale_lamD=1/6, 
                  detector_rotation=0, 
                  dm_ref=np.zeros((34,34)),
                  dm_inf=None, # defaults to inf.fits
-                 im_norm=None,
-                 RETRIEVED=None,
-                 APODIZER=None,
-                 FPM=None,
+                 norm=None,
+                 WFE=None,
+                 USE_FPM=False,
+                 CHARGE=6,
                  LYOT=None):
         
         poppy.accel_math.update_math_settings()
@@ -56,27 +65,26 @@ class CORO():
         self.oversample = oversample
         self.N = int(npix*oversample)
         self.npsf = npsf
+        self.psf_pixelscale_lamD = psf_pixelscale_lamD
         
-        self.psf_pixelscale_lamD = 1/self.oversample
-        
-        self.as_per_lamD = ((self.wavelength_c/self.pupil_diam)*u.radian).to(u.arcsec)
-        self.psf_pixelscale_as = self.psf_pixelscale_lamD * self.as_per_lamD * self.oversample
+        self.norm = norm
         
         self.dm_inf = 'inf.fits' if dm_inf is None else dm_inf
         
-        self.RETRIEVED = xp.ones((self.N, self.N)) if RETRIEVED is None else RETRIEVED
-        self.APODIZER = xp.ones((self.N,self.N)) if APODIZER is None else APODIZER
-        self.FPM = xp.ones((self.N,self.N)) if FPM is None else FPM
-        self.LYOT = xp.ones((self.N,self.N)) if LYOT is None else LYOT
+        self.WFE = WFE
+        self.LYOT = LYOT
         
         self.init_dm()
+        self.init_grids()
         
         self.det_rotation = detector_rotation
         
         self.pupil_apodizer_ratio = 1 
         self.pupil_lyot_ratio = 350/500 # pupil size ratios derived from focal lengths of relay OAPs
         
-        self.init_osys()
+        self.USE_FPM = USE_FPM
+        self.CHARGE = CHARGE
+        
         
     def getattr(self, attr):
         return getattr(self, attr)
@@ -96,7 +104,7 @@ class CORO():
         r = np.sqrt(x**2 + y**2)
         self.dm_mask[r>10.5] = 0 # had to set the threshold to 10.5 instead of 10.2 to include edge actuators
         
-        self.dm_zernikes = poppy.zernike.arbitrary_basis(cp.array(self.dm_mask), nterms=15, outside=0).get()
+        self.dm_zernikes = ensure_np_array(poppy.zernike.arbitrary_basis(xp.array(self.dm_mask), nterms=15, outside=0))
         
         self.DM = poppy.ContinuousDeformableMirror(dm_shape=(self.Nact,self.Nact), name='DM', 
                                                    actuator_spacing=self.act_spacing, 
@@ -120,106 +128,233 @@ class CORO():
         misc.imshow2(self.get_dm(), self.DM.get_opd(wf), 'DM Command', 'DM Surface',
                      pxscl2=wf.pixelscale.to(u.mm/u.pix))
     
-    def init_osys(self):
-        RETRIEVED = poppy.ScalarTransmission(name='Retrieved WFE Place-holder') if self.RETRIEVED is None else self.RETRIEVED
-        APODIZER = poppy.ScalarTransmission(name='Apodizer Place-holder') if self.APODIZER is None else self.APODIZER
-        FPM = poppy.ScalarTransmission(name='FPM Place-holder') if self.FPM is None else self.FPM
-        LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if self.LYOT is None else self.LYOT
+    def init_grids(self):
+        self.pupil_pixelscale = self.pupil_diam.to_value(u.m) / self.npix
+        self.N = int(self.npix*self.oversample)
+        x_p = ( xp.linspace(-self.N/2, self.N/2-1, self.N) + 1/2 ) * self.pupil_pixelscale
+        self.ppx, self.ppy = xp.meshgrid(x_p, x_p)
+        self.ppr = xp.sqrt(self.ppx**2 + self.ppy**2)
         
-        # define FresnelOpticalSystem and add optics
-        osys = poppy.OpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, oversample=self.oversample)
+        self.PUPIL = self.ppr < self.pupil_diam.to_value(u.m)/2
         
-        osys.add_pupil(poppy.CircularAperture(radius=self.pupil_diam/2))
-        osys.add_pupil(RETRIEVED)
-        osys.add_pupil(self.DM)
-        osys.add_pupil(APODIZER)
-        osys.add_image(FPM)
-        osys.add_pupil(LYOT)
-        osys.add_detector(pixelscale=self.psf_pixelscale_as.value, fov_pixels=self.npsf/self.oversample,)
+        self.focal_pixelscale_lamD = 1/self.oversample
+        x_f = ( xp.linspace(-self.N/2, self.N/2-1, self.N) + 1/2 ) * self.focal_pixelscale_lamD
+        self.fpx, self.fpy = xp.meshgrid(x_f, x_f)
+        self.fpr = xp.sqrt(self.fpx**2 + self.fpy**2)
+        self.fpth = xp.arctan2(self.fpy,self.fpx)
         
-        self.osys = osys
-        
-    def init_inwave(self):
-        inwave = poppy.Wavefront(diam=self.pupil_diam, wavelength=self.wavelength,
-                                 npix=self.npix, oversample=self.oversample)
-        self.inwave = inwave
+        x_im = ( xp.linspace(-self.npsf/2, self.npsf/2-1, self.npsf) + 1/2 ) * self.psf_pixelscale_lamD
+        self.imx, self.imy = xp.meshgrid(x_im, x_im)
+        self.imr = xp.sqrt(self.imx**2 + self.imy**2)
     
-    def calc_wfs(self, quiet=False):
-        start = time.time()
-        if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
-        self.init_osys()
-        self.init_inwave()
-        _, wfs = self.osys.calc_psf(inwave=self.inwave, return_intermediates=True)
-        if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        
-        return wfs
+    def apply_dm(self, wavefront):
+        fwf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, npix=self.npix, oversample=self.oversample)
+        dm_opd = self.DM.get_opd(fwf)
+        wf_opd = xp.angle(wavefront)*self.wavelength.to_value(u.m)/(2*np.pi)
+        wf_opd += dm_opd
+        wavefront = xp.abs(wavefront) * xp.exp(1j*2*np.pi/self.wavelength.to_value(u.m) * wf_opd)
+        return wavefront
     
-    def calc_psf(self, quiet=True): # method for getting the PSF in photons
-        start = time.time()
-        if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
-        self.init_osys()
-        self.init_inwave()
-        _, wf = self.osys.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
-        if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-#         resamped_wf = self.rotate_and_interp_image(wf[0]).get()
-        return wf[0].wavefront.get()
+    def fft(self, wavefront, forward=True):
+        if forward:
+            wavefront = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(wavefront)))
+        else:
+            wavefront = xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(wavefront)))
+            
+        return wavefront
     
-    def snap(self): # method for getting the PSF in photons
-        self.init_osys()
-        self.init_inwave()
-        _, wf = self.osys.calc_psf(inwave=self.inwave, return_intermediates=False, return_final=True)
-#         image = (cp.abs(self.rotate_and_interp_image(wf[0]))**2).get()
-        image = wf[0].intensity.get()
-        return image
+    def mft(self, wavefront, nlamD, npix, forward=True,):
+        # this code was duplicated from POPPY's MFT method
+        npupY, npupX = wavefront.shape
+        nlamDX, nlamDY = nlamD, nlamD
+        npixY, npixX = npix, npix
+        
+        if forward:
+            dU = nlamDX / float(npixX)
+            dV = nlamDY / float(npixY)
+            dX = 1.0 / float(npupX)
+            dY = 1.0 / float(npupY)
+        else:
+            dX = nlamDX / float(npupX)
+            dY = nlamDY / float(npupY)
+            dU = 1.0 / float(npixX)
+            dV = 1.0 / float(npixY)
+        
+        offsetY, offsetX = 0.0, 0.0
+        
+        Xs = (xp.arange(npupX, dtype=float) - float(npupX) / 2.0 - offsetX + 0.5) * dX
+        Ys = (xp.arange(npupY, dtype=float) - float(npupY) / 2.0 - offsetY + 0.5) * dY
+
+        Us = (xp.arange(npixX, dtype=float) - float(npixX) / 2.0 - offsetX + 0.5) * dU
+        Vs = (xp.arange(npixY, dtype=float) - float(npixY) / 2.0 - offsetY + 0.5) * dV
+        
+        XU = xp.outer(Xs, Us)
+        YV = xp.outer(Ys, Vs)
+        
+        if forward:
+            expXU = xp.exp(-2.0 * np.pi * -1j * XU)
+            expYV = xp.exp(-2.0 * np.pi * -1j * YV).T
+            t1 = xp.dot(expYV, wavefront)
+            t2 = xp.dot(t1, expXU)
+        else:
+            expYV = xp.exp(-2.0 * np.pi * 1j * YV).T
+            expXU = xp.exp(-2.0 * np.pi * 1j * XU)
+            t1 = xp.dot(expYV, wavefront)
+            t2 = xp.dot(t1, expXU)
+
+        norm_coeff = np.sqrt((nlamDY * nlamDX) / (npupY * npupX * npixY * npixX))
+        
+        return norm_coeff * t2
     
-    def rotate_and_interp_image(self, im_wf):
-        wavefront = im_wf.wavefront
-        wavefront_r = cupyx.scipy.ndimage.rotate(cp.real(wavefront), angle=-self.det_rotation, reshape=False, order=0)
-        wavefront_i = cupyx.scipy.ndimage.rotate(cp.imag(wavefront), angle=-self.det_rotation, reshape=False, order=0)
+    def propagate(self):
+        self.init_grids()
         
-        im_wf.wavefront = wavefront_r + 1j*wavefront_i
+        WFE = xp.ones((self.N, self.N), dtype=xp.complex128) if self.WFE is None else self.WFE
+        LYOT = xp.ones((self.N, self.N), dtype=xp.complex128) if self.LYOT is None else self.LYOT
         
-        resamped_wf = self.interp_wf(im_wf)
-        return resamped_wf
+        self.wavefront = xp.ones((self.N,self.N), dtype=xp.complex128)
+        self.wavefront *= self.PUPIL # apply the pupil
+        self.wavefront /= np.float64(xp.sqrt(xp.sum(self.PUPIL))) if self.norm is None else self.norm
+        self.wavefront = self.apply_dm(self.wavefront)# apply the DM
+        
+        # propagate to intermediate focal plane
+        self.wavefront = self.fft(self.wavefront)
+        
+        # propagate to the pre-FPM pupil plane
+        self.wavefront = self.fft(self.wavefront, forward=False)
+        self.wavefront *= WFE # apply WFE data
+        
+        if self.USE_FPM: 
+            self.wavefront = self.apply_vortex(self.wavefront)
+        
+        self.wavefront *= LYOT # apply the Lyot stop
+        
+        # propagate to image plane with MFT
+        self.nlamD = self.npsf * self.psf_pixelscale_lamD * self.oversample
+        self.wavefront = self.mft(self.wavefront, self.nlamD, self.npsf)
+        
+        return self.wavefront
     
-    def interp_wf(self, wave): # this will interpolate the FresnelWavefront data to match the desired pixelscale
-        n = wave.wavefront.shape[0]
-        xs = (cp.linspace(0, n-1, n))*wave.pixelscale.to(u.m/u.pix).value
+    def apply_vortex(self, wavefront):
+        # using FALCO's implementation of a scalar vortex
+        beam_radius_pix = int(self.npix/2)
+        pix_per_lamD = 4
+        D = 2.0*beam_radius_pix
         
-        extent = self.npsf*self.psf_pixelscale.to(u.m/u.pix).value
+        NA = wavefront.shape[1]
+        NB = int(round(pix_per_lamD*D)) 
+        if NB%2==1: NB +=1
+        print(NA,NB)
         
-        for i in range(n):
-            if xs[i+1]>extent:
-                newn = i
-                break
-        newn += 2
-        cropped_wf = misc.pad_or_crop(wave.wavefront, newn)
+        x = xp.arange(-NB/2, NB/2)
+        x,y = xp.meshgrid(x,x)
+        rho = xp.sqrt(x**2 + y**2)
+        th = xp.arctan2(y,x)
+        
+        vortex_mask = xp.exp(1j * self.CHARGE * th)
+#         misc.imshow2(xp.abs(vortex_mask), xp.angle(vortex_mask))
+        
+        in_val, out_val = (0.3, 5)
+#         in_val, out_val = (1.2, 20)
+        window_knee = 1 - in_val/out_val
+        
+        window_mask_1 = self.gen_tukey_for_vortex(2*out_val*pix_per_lamD, rho, window_knee)
+        window_mask_2 = self.gen_tukey_for_vortex(NB, rho, window_knee)
+        
+        # DFT vectors
+        x =xp.arange(-NA/2,NA/2,dtype=float)/D   #(-NA/2:NA/2-1)/D
+        u1 = xp.arange(-NB/2,NB/2,dtype=float)/pix_per_lamD #(-NB/2:NB/2-1)/lambdaOverD
+        u2 = xp.arange(-NB/2,NB/2,dtype=float)*2*out_val/NB
+        
+        # Low-sampled DFT of entire region
+        FP1 = 1/(1*D*pix_per_lamD)*xp.exp(-1j*2*np.pi*xp.outer(u1,x)) @ wavefront @ xp.exp(-1j*2*np.pi*np.outer(x,u1))
+        misc.imshow2(xp.abs(FP1)**2, xp.angle(FP1), npix=self.npix, lognorm1=True)
+        FP1 *= vortex_mask * (1-window_mask_1)
+        
+        LP1 = 1/(1*D*pix_per_lamD)*xp.exp(-1j*2*np.pi*xp.outer(x,u1)) @ FP1 @ xp.exp(-1j*2*np.pi*xp.outer(u1,x))
+        misc.imshow2(xp.abs(LP1), xp.angle(LP1), npix=self.npix, lognorm1=True)
+        
+        # Fine sampled DFT of innter region
+        FP2 = 2*out_val/(1*D*NB)*xp.exp(-1j*2*np.pi*xp.outer(u2,x)) @ wavefront @ xp.exp(-1j*2*np.pi*xp.outer(x,u2))
+        misc.imshow2(xp.abs(FP2)**2, xp.angle(FP2), npix=self.npix, lognorm1=True)
+        
+        FP2 *= vortex_mask * window_mask_2
+        LP2 = 2.0*out_val/(1*D*NB)*xp.exp(-1j*2*np.pi*xp.outer(x,u2)) @ FP2 @ xp.exp(-1j*2*np.pi*xp.outer(u2,x)) 
+        misc.imshow2(xp.abs(LP2), xp.angle(LP2), npix=self.npix, lognorm1=True)
+        
+        post_pupil_wavefront = LP1 + LP2;
+        
+        return post_pupil_wavefront
+    
+    def gen_tukey_for_vortex(self, Nwindow, RHO, alpha):
+        Nlut = int(10*Nwindow)
+        rhos0 = xp.linspace(-Nwindow/2, Nwindow/2, Nlut)
+        lut = xp.array(scipy.signal.tukey(Nlut, alpha))  #,left=0,right=0)
+        
+        windowTukey = xp.interp(RHO, rhos0, lut)
+        
+        return windowTukey
+    
+    #     def apply_vortex(self, wavefront, q=1024, scaling_factor=4, window_size=32):
+#         pupil_diameter = wavefront.shape[0] * self.pupil_pixelscale
+#         print('pupil', pupil_diameter)
+#         levels = int(np.ceil(np.log(q / 2) / np.log(scaling_factor))) + 1
+#         qs = [2 * scaling_factor**i for i in range(levels)]
+#         num_airys = [np.array([self.N,self.N])/2]
+#         print(levels)
+#         print(qs)
+#         print(num_airys)
+        
+#         focal_grids = []
+#         focal_masks = []
+#         props = []
+        
+#         for i in range(1, levels):
+#             num_airys.append(num_airys[i - 1] * window_size / (2 * qs[i - 1] * num_airys[i - 1]))
+#         print(num_airys)
+        
+#         for i in range(levels):
+#             q = qs[i] # the number of pixels per resolution element (pixels/(f lambda/D))
+#             num_airy = num_airys[i] # radial extent of the grid in resolution elements (f lambda/D)
+#             nfp = int(2*q*num_airy[0]) # total extent of the focal plane in pixels
+# #             print(nfp)
+# #             focal_grid = make_focal_grid(q, num_airy, pupil_diameter=pupil_diameter, reference_wavelength=1, focal_length=1)
+# #             focal_mask = Field(np.exp(1j * charge * focal_grid.as_('polar').theta), focal_grid)
+# #             focal_mask *= 1 - make_circular_aperture(1e-9)(focal_grid)
+            
+#             x_f = ( np.linspace(-nfp/2, nfp/2-1, nfp) + 1/2 ) /q*pupil_diameter * 2
+#             fpx, fpy = np.meshgrid(x_f, x_f)
+#             misc.imshow1(fpx)
+#             fpr = np.sqrt(fpx**2 + fpy**2)
+#             fpth = np.arctan2(fpy,fpx)
+#             circ_mask = fpr < 1
+#             print(fpr.max())
+#             focal_mask = np.exp(1j * self.CHARGE * fpth)
+# #             focal_mask *= 1 - circ_mask
+#             print(focal_mask.shape)
+# #             misc.imshow2(np.abs(focal_mask), np.angle(focal_mask))
+            
+#             if i != levels - 1:
+#                 wx = scipy.signal.windows.tukey(window_size, 1, False)
+#                 wy = scipy.signal.windows.tukey(window_size, 1, False)
+#                 w = np.outer(wy, wx)
 
-        wf_xmax = wave.pixelscale.to(u.m/u.pix).value * newn/2
-        x,y = cp.ogrid[-wf_xmax:wf_xmax:cropped_wf.shape[0]*1j,
-                       -wf_xmax:wf_xmax:cropped_wf.shape[1]*1j]
+#                 w = np.pad(w, (np.array([nfp,nfp]) - w.shape) // 2, 'constant')
+#                 focal_mask *= 1 - w
 
-        det_xmax = extent/2
-        newx,newy = cp.mgrid[-det_xmax:det_xmax:self.npsf*1j,
-                             -det_xmax:det_xmax:self.npsf*1j]
-        x0 = x[0,0]
-        y0 = y[0,0]
-        dx = x[1,0] - x0
-        dy = y[0,1] - y0
+#             for j in range(i):
+# #                 fft = FastFourierTransform(focal_grids[j])
+# #                 mft = MatrixFourierTransform(focal_grid, fft.output_grid)
+# #                 focal_mask -= mft.backward(fft.forward(self.focal_masks[j]))
+#                 temp = self.fft(xp.array(focal_masks[j]), forward=False)
+#                 focal_mask -= ensure_np_array(self.mft(temp, fpr.max(), nfp, forward=False))
+                
+#             focal_masks.append(focal_mask)
+            
+# #             misc.imshow2(np.abs(focal_mask), np.angle(focal_mask))
 
-        ivals = (newx - x0)/dx
-        jvals = (newy - y0)/dy
-
-        coords = cp.array([ivals, jvals])
-        
-        resamped_wf = cupyx.scipy.ndimage.map_coordinates(cropped_wf, coords, order=3)
-        
-        m = (wave.pixelscale.to(u.m/u.pix)/self.psf_pixelscale.to(u.m/u.pix)).value
-        resamped_wf /= m
-        
-        return resamped_wf
+#         return wavefront
     
     
-
-
-
+    
+    

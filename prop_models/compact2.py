@@ -23,6 +23,7 @@ inter = PlaneType.intermediate
 image = PlaneType.image
 
 import cupyx.scipy.ndimage
+import falco
 
 import misc_funs as misc
 
@@ -157,13 +158,21 @@ class CORO():
     
     def fft(self, wavefront, forward=True):
         if forward:
-            wavefront = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(wavefront)))
+            wavefront = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(wavefront)))
         else:
-            wavefront = xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(wavefront)))
+            wavefront = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(wavefront)))
             
         return wavefront
     
-    def mft(self, wavefront, nlamD, npix, forward=True,):
+    def mft(self, wavefront, nlamD, npix, forward=True, centering='ADJUSTABLE'):
+        '''
+        npix : int
+            Number of pixels per side side of destination plane array (corresponds
+            to 'N_B' in Soummer et al. 2007 4.2). This will be the # of pixels in
+            the image plane for a forward transformation, in the pupil plane for an
+            inverse.
+        '''
+        
         # this code was duplicated from POPPY's MFT method
         npupY, npupX = wavefront.shape
         nlamDX, nlamDY = nlamD, nlamD
@@ -180,13 +189,20 @@ class CORO():
             dU = 1.0 / float(npixX)
             dV = 1.0 / float(npixY)
         
-        offsetY, offsetX = 0.0, 0.0
         
-        Xs = (xp.arange(npupX, dtype=float) - float(npupX) / 2.0 - offsetX + 0.5) * dX
-        Ys = (xp.arange(npupY, dtype=float) - float(npupY) / 2.0 - offsetY + 0.5) * dY
+        if centering=='ADJUSTABLE':
+            offsetY, offsetX = 0.0, 0.0
+            Xs = (xp.arange(npupX, dtype=float) - float(npupX) / 2.0 - offsetX + 0.5) * dX
+            Ys = (xp.arange(npupY, dtype=float) - float(npupY) / 2.0 - offsetY + 0.5) * dY
 
-        Us = (xp.arange(npixX, dtype=float) - float(npixX) / 2.0 - offsetX + 0.5) * dU
-        Vs = (xp.arange(npixY, dtype=float) - float(npixY) / 2.0 - offsetY + 0.5) * dV
+            Us = (xp.arange(npixX, dtype=float) - float(npixX) / 2.0 - offsetX + 0.5) * dU
+            Vs = (xp.arange(npixY, dtype=float) - float(npixY) / 2.0 - offsetY + 0.5) * dV
+        elif centering=='FFTSTYLE':
+            Xs = (xp.arange(npupX, dtype=float) - (npupX / 2)) * dX
+            Ys = (xp.arange(npupY, dtype=float) - (npupY / 2)) * dY
+
+            Us = (xp.arange(npixX, dtype=float) - npixX / 2) * dU
+            Vs = (xp.arange(npixY, dtype=float) - npixY / 2) * dV
         
         XU = xp.outer(Xs, Us)
         YV = xp.outer(Ys, Vs)
@@ -226,7 +242,10 @@ class CORO():
         
         if self.USE_FPM: 
             self.wavefront = self.apply_vortex(self.wavefront)
-        
+#             in_val, out_val = (0.5, 6)
+#             self.wavefront = falco.prop.mft_p2v2p(ensure_np_array(self.wavefront), self.CHARGE, self.npix/2, in_val, out_val)
+#             self.wavefront = xp.array(self.wavefront)
+            
         self.wavefront *= LYOT # apply the Lyot stop
         
         # propagate to image plane with MFT
@@ -235,125 +254,146 @@ class CORO():
         
         return self.wavefront
     
-    def apply_vortex(self, wavefront):
-        # using FALCO's implementation of a scalar vortex
-        beam_radius_pix = int(self.npix/2)
-        pix_per_lamD = 4
-        D = 2.0*beam_radius_pix
+#     def apply_vortex(self, wavefront):
+#         # using FALCO's implementation of a scalar vortex
+#         beam_radius_pix = int(self.npix/2)
+#         pix_per_lamD = 4
+#         D = 2.0*beam_radius_pix
         
-        NA = wavefront.shape[1]
-        NB = int(round(pix_per_lamD*D)) 
-        if NB%2==1: NB +=1
-        print(NA,NB)
+#         NA = wavefront.shape[1]
+#         NB = int(round(pix_per_lamD*D)) 
+#         if NB%2==1: NB +=1
+#         print(NA,NB)
         
-        x = xp.arange(-NB/2, NB/2)
-        x,y = xp.meshgrid(x,x)
-        rho = xp.sqrt(x**2 + y**2)
-        th = xp.arctan2(y,x)
+#         x = xp.arange(-NB/2, NB/2)
+#         x,y = xp.meshgrid(x,x)
+#         rho = xp.sqrt(x**2 + y**2)
+#         th = xp.arctan2(y,x)
+#         vortex_mask = xp.exp(1j * self.CHARGE * th)
+# #         misc.imshow2(xp.abs(vortex_mask), xp.angle(vortex_mask))
         
-        vortex_mask = xp.exp(1j * self.CHARGE * th)
-#         misc.imshow2(xp.abs(vortex_mask), xp.angle(vortex_mask))
+#         in_val, out_val = (0.3, 5)
+# #         in_val, out_val = (1.2, 20)
+#         window_knee = 1 - in_val/out_val
         
-        in_val, out_val = (0.3, 5)
-#         in_val, out_val = (1.2, 20)
-        window_knee = 1 - in_val/out_val
+#         window_mask_1 = self.gen_tukey_for_vortex(2*out_val*pix_per_lamD, rho, window_knee)
+#         window_mask_2 = self.gen_tukey_for_vortex(NB, rho, window_knee)
         
-        window_mask_1 = self.gen_tukey_for_vortex(2*out_val*pix_per_lamD, rho, window_knee)
-        window_mask_2 = self.gen_tukey_for_vortex(NB, rho, window_knee)
+#         misc.imshow3(1-window_mask_1, window_mask_2, (1-window_mask_1) + window_mask_2)
         
-        # DFT vectors
-        x =xp.arange(-NA/2,NA/2,dtype=float)/D   #(-NA/2:NA/2-1)/D
-        u1 = xp.arange(-NB/2,NB/2,dtype=float)/pix_per_lamD #(-NB/2:NB/2-1)/lambdaOverD
-        u2 = xp.arange(-NB/2,NB/2,dtype=float)*2*out_val/NB
+#         # DFT vectors
+#         x = xp.arange(-NA/2,NA/2,dtype=float)/D   #(-NA/2:NA/2-1)/D
+#         u1 = xp.arange(-NB/2,NB/2,dtype=float)/pix_per_lamD #(-NB/2:NB/2-1)/lambdaOverD
+#         u2 = xp.arange(-NB/2,NB/2,dtype=float)*2*out_val/NB
         
-        # Low-sampled DFT of entire region
-        FP1 = 1/(1*D*pix_per_lamD)*xp.exp(-1j*2*np.pi*xp.outer(u1,x)) @ wavefront @ xp.exp(-1j*2*np.pi*np.outer(x,u1))
-        misc.imshow2(xp.abs(FP1)**2, xp.angle(FP1), npix=self.npix, lognorm1=True)
-        FP1 *= vortex_mask * (1-window_mask_1)
+#         # Low-sampled DFT of entire region
+#         FP1 = 1/(1*D*pix_per_lamD)*xp.exp(-1j*2*np.pi*xp.outer(u1,x)) @ wavefront @ xp.exp(-1j*2*np.pi*xp.outer(x,u1))
+#         misc.imshow2(xp.abs(FP1)**2, xp.angle(FP1), npix=self.npix, lognorm1=True)
+#         FP1 *= vortex_mask * (1-window_mask_1)
         
-        LP1 = 1/(1*D*pix_per_lamD)*xp.exp(-1j*2*np.pi*xp.outer(x,u1)) @ FP1 @ xp.exp(-1j*2*np.pi*xp.outer(u1,x))
-        misc.imshow2(xp.abs(LP1), xp.angle(LP1), npix=self.npix, lognorm1=True)
+#         LP1 = 1/(1*D*pix_per_lamD)*xp.exp(-1j*2*np.pi*xp.outer(x,u1)) @ FP1 @ xp.exp(-1j*2*np.pi*xp.outer(u1,x))
+#         misc.imshow2(xp.abs(LP1), xp.angle(LP1), npix=self.npix, lognorm1=True)
         
-        # Fine sampled DFT of innter region
-        FP2 = 2*out_val/(1*D*NB)*xp.exp(-1j*2*np.pi*xp.outer(u2,x)) @ wavefront @ xp.exp(-1j*2*np.pi*xp.outer(x,u2))
-        misc.imshow2(xp.abs(FP2)**2, xp.angle(FP2), npix=self.npix, lognorm1=True)
+#         # Fine sampled DFT of innter region
+#         FP2 = 2*out_val/(1*D*NB)*xp.exp(-1j*2*np.pi*xp.outer(u2,x)) @ wavefront @ xp.exp(-1j*2*np.pi*xp.outer(x,u2))
+#         misc.imshow2(xp.abs(FP2)**2, xp.angle(FP2), npix=self.npix, lognorm1=True)
         
-        FP2 *= vortex_mask * window_mask_2
-        LP2 = 2.0*out_val/(1*D*NB)*xp.exp(-1j*2*np.pi*xp.outer(x,u2)) @ FP2 @ xp.exp(-1j*2*np.pi*xp.outer(u2,x)) 
-        misc.imshow2(xp.abs(LP2), xp.angle(LP2), npix=self.npix, lognorm1=True)
+#         FP2 *= vortex_mask * window_mask_2
+#         LP2 = 2.0*out_val/(1*D*NB)*xp.exp(-1j*2*np.pi*xp.outer(x,u2)) @ FP2 @ xp.exp(-1j*2*np.pi*xp.outer(u2,x)) 
+#         misc.imshow2(xp.abs(LP2), xp.angle(LP2), npix=self.npix, lognorm1=True)
         
-        post_pupil_wavefront = LP1 + LP2;
+#         post_pupil_wavefront = LP1 + LP2
         
-        return post_pupil_wavefront
+#         return post_pupil_wavefront
     
-    def gen_tukey_for_vortex(self, Nwindow, RHO, alpha):
-        Nlut = int(10*Nwindow)
-        rhos0 = xp.linspace(-Nwindow/2, Nwindow/2, Nlut)
-        lut = xp.array(scipy.signal.tukey(Nlut, alpha))  #,left=0,right=0)
+#     def gen_tukey_for_vortex(self, Nwindow, RHO, alpha):
+#         Nlut = int(10*Nwindow)
+#         rhos0 = xp.linspace(-Nwindow/2, Nwindow/2, Nlut)
+#         lut = xp.array(scipy.signal.tukey(Nlut, alpha))  #,left=0,right=0)
         
-        windowTukey = xp.interp(RHO, rhos0, lut)
+#         windowTukey = xp.interp(RHO, rhos0, lut)
         
-        return windowTukey
+#         return windowTukey
     
-    #     def apply_vortex(self, wavefront, q=1024, scaling_factor=4, window_size=32):
-#         pupil_diameter = wavefront.shape[0] * self.pupil_pixelscale
-#         print('pupil', pupil_diameter)
-#         levels = int(np.ceil(np.log(q / 2) / np.log(scaling_factor))) + 1
-#         qs = [2 * scaling_factor**i for i in range(levels)]
-#         num_airys = [np.array([self.N,self.N])/2]
-#         print(levels)
-#         print(qs)
-#         print(num_airys)
+    def apply_vortex(self, wavefront, q=1024, scaling_factor=4, window_size=32):
+        pupil_diameter = self.N * self.pupil_pixelscale
+        pupil_diameter = 6.5/self.npix * self.N
+        focal_length = 1
+        reference_wavelength = 1
+        f_number = focal_length / pupil_diameter
+        print('pupil', pupil_diameter)
+        levels = int(np.ceil(np.log(q / 2) / np.log(scaling_factor))) + 1
+        qs = [2 * scaling_factor**i for i in range(levels)]
+        num_airys = [np.array([self.N,self.N])/2]
+        print(levels)
+        print(qs)
+        print(num_airys)
         
-#         focal_grids = []
-#         focal_masks = []
-#         props = []
+        focal_grid_deltas =[]
+        focal_grids = []
+        focal_masks = []
+        props = []
         
-#         for i in range(1, levels):
-#             num_airys.append(num_airys[i - 1] * window_size / (2 * qs[i - 1] * num_airys[i - 1]))
-#         print(num_airys)
+        for i in range(1, levels):
+            num_airys.append(num_airys[i - 1] * window_size / (2 * qs[i - 1] * num_airys[i - 1]))
+        print(num_airys)
         
-#         for i in range(levels):
-#             q = qs[i] # the number of pixels per resolution element (pixels/(f lambda/D))
-#             num_airy = num_airys[i] # radial extent of the grid in resolution elements (f lambda/D)
-#             nfp = int(2*q*num_airy[0]) # total extent of the focal plane in pixels
-# #             print(nfp)
-# #             focal_grid = make_focal_grid(q, num_airy, pupil_diameter=pupil_diameter, reference_wavelength=1, focal_length=1)
-# #             focal_mask = Field(np.exp(1j * charge * focal_grid.as_('polar').theta), focal_grid)
-# #             focal_mask *= 1 - make_circular_aperture(1e-9)(focal_grid)
+        for i in range(levels):
+            q = qs[i] # the number of pixels per resolution element (pixels/(f lambda/D))
+            num_airy = num_airys[i] # radial extent of the grid in resolution elements (f lambda/D)
+            nfp = int(2*q*num_airy[0]) # total extent of the focal plane in pixels
             
-#             x_f = ( np.linspace(-nfp/2, nfp/2-1, nfp) + 1/2 ) /q*pupil_diameter * 2
-#             fpx, fpy = np.meshgrid(x_f, x_f)
-#             misc.imshow1(fpx)
-#             fpr = np.sqrt(fpx**2 + fpy**2)
-#             fpth = np.arctan2(fpy,fpx)
-#             circ_mask = fpr < 1
-#             print(fpr.max())
-#             focal_mask = np.exp(1j * self.CHARGE * fpth)
-# #             focal_mask *= 1 - circ_mask
-#             print(focal_mask.shape)
-# #             misc.imshow2(np.abs(focal_mask), np.angle(focal_mask))
+            spatial_resolution = f_number * reference_wavelength
+            delta = spatial_resolution / q 
+            x_f = ( xp.arange(-nfp//2, nfp//2) ) * delta
+            fpx, fpy = xp.meshgrid(x_f, x_f)
+            fpr = xp.sqrt(fpx**2 + fpy**2)
+            fpth = xp.arctan2(fpy,fpx)
+            circ_mask = fpr < delta
+#             misc.imshow1(fpr, 'Focal Grid: r')
+            focal_grid = xp.array([fpr, fpth]) # store the polar coordinates of the focal grid
             
-#             if i != levels - 1:
-#                 wx = scipy.signal.windows.tukey(window_size, 1, False)
-#                 wy = scipy.signal.windows.tukey(window_size, 1, False)
-#                 w = np.outer(wy, wx)
-
-#                 w = np.pad(w, (np.array([nfp,nfp]) - w.shape) // 2, 'constant')
-#                 focal_mask *= 1 - w
-
-#             for j in range(i):
-# #                 fft = FastFourierTransform(focal_grids[j])
-# #                 mft = MatrixFourierTransform(focal_grid, fft.output_grid)
-# #                 focal_mask -= mft.backward(fft.forward(self.focal_masks[j]))
-#                 temp = self.fft(xp.array(focal_masks[j]), forward=False)
-#                 focal_mask -= ensure_np_array(self.mft(temp, fpr.max(), nfp, forward=False))
-                
-#             focal_masks.append(focal_mask)
+            focal_mask = xp.exp(1j * self.CHARGE * fpth)
+            focal_mask *= 1 - circ_mask
+#             misc.imshow2(xp.abs(focal_mask), xp.angle(focal_mask), 'Focal Mask Amp', 'Focal mask Phs', npix=32)
             
-# #             misc.imshow2(np.abs(focal_mask), np.angle(focal_mask))
+            if i != levels - 1:
+                wx = xp.array(scipy.signal.windows.tukey(window_size, 1, False))
+                wy = xp.array(scipy.signal.windows.tukey(window_size, 1, False))
+                w = xp.outer(wy, wx)
+                w = xp.pad(w, (np.array([nfp,nfp]) - w.shape) // 2, 'constant')
+                focal_mask *= 1 - w
+#                 misc.imshow1(w, 'Tukey Window')
 
-#         return wavefront
+            print(i)
+            for j in range(i):
+#                 fft = FastFourierTransform(focal_grids[j])
+#                 mft = MatrixFourierTransform(focal_grid, fft.output_grid)
+#                 focal_mask -= mft.backward(fft.forward(self.focal_masks[j]))
+                temp = xp.fft.fftshift( xp.fft.fft2( xp.fft.ifftshift( focal_masks[j] ) ) ) / focal_masks[j].shape[0] 
+                temp *= 352.61210727101786/xp.max(xp.abs(temp))
+                misc.imshow2(xp.abs(temp), xp.angle(temp), 
+                             'Temp Amp: {:d},{:d}'.format(i,j+1), 'Temp Phs: {:d},{:d}'.format(i,j+1), npix=32, grid=True)
+                focal_mask -= self.mft(temp, nfp*focal_grid_deltas[j]/2 * 40, nfp, forward=False, centering='FFTSTYLE')
+                misc.imshow2(xp.abs(focal_mask), xp.angle(focal_mask),
+                             'Focal Mask Amp: {:d},{:d}'.format(i,j+1), 'Focal mask Phs: {:d},{:d}'.format(i,j+1), npix=64)
+        
+            focal_grid_deltas.append(delta)
+            focal_grids.append(focal_grid)
+            focal_masks.append(copy.copy(focal_mask))
+            props.append(self.fft)
+            
+        for i, (mask, prop) in enumerate(zip(focal_masks, props)):
+            if i == 0:
+                lyot = prop(forward=True)
+            else:
+                focal = prop(wavefront)
+                focal.electric_field *= mask
+                lyot.electric_field += prop.backward(focal).electric_field
+        
+#             misc.imshow2(np.abs(focal_mask), np.angle(focal_mask))
+
+        return wavefront
     
     
     

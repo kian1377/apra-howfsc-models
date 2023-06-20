@@ -241,6 +241,7 @@ class CORO():
         self.wavefront *= WFE # apply WFE data
         
         if self.USE_FPM: 
+#             self.wavefront = self.simple_vortex(self.wavefront)
             self.wavefront = self.apply_vortex(self.wavefront)
 #             in_val, out_val = (0.5, 6)
 #             self.wavefront = falco.prop.mft_p2v2p(ensure_np_array(self.wavefront), self.CHARGE, self.npix/2, in_val, out_val)
@@ -315,6 +316,20 @@ class CORO():
         
 #         return windowTukey
     
+    def simple_vortex(self, wavefront):
+        N = wavefront.shape[0]
+        x = xp.arange(-N/2, N/2)
+        x,y = xp.meshgrid(x,x)
+        th = xp.arctan2(y,x)
+        vortex_mask = xp.exp(1j * self.CHARGE * th)
+        misc.imshow1(xp.angle(vortex_mask))
+        
+        wavefront = self.fft(wavefront, forward=True)
+        wavefront *= vortex_mask
+        wavefront = self.fft(wavefront, forward=False)
+        misc.imshow2(xp.abs(wavefront), xp.angle(wavefront))
+        return wavefront
+    
     def apply_vortex(self, wavefront, q=1024, scaling_factor=4, window_size=32):
         pupil_diameter = self.N * self.pupil_pixelscale
         pupil_diameter = 6.5/self.npix * self.N
@@ -370,14 +385,16 @@ class CORO():
 #                 fft = FastFourierTransform(focal_grids[j])
 #                 mft = MatrixFourierTransform(focal_grid, fft.output_grid)
 #                 focal_mask -= mft.backward(fft.forward(self.focal_masks[j]))
-                temp = xp.fft.fftshift( xp.fft.fft2( xp.fft.ifftshift( focal_masks[j] ) ) ) / focal_masks[j].shape[0] 
-                temp *= 352.61210727101786/xp.max(xp.abs(temp))
-                misc.imshow2(xp.abs(temp), xp.angle(temp), 
-                             'Temp Amp: {:d},{:d}'.format(i,j+1), 'Temp Phs: {:d},{:d}'.format(i,j+1), npix=32, grid=True)
-                focal_mask -= self.mft(temp, nfp*focal_grid_deltas[j]/2 * 40, nfp, forward=False, centering='FFTSTYLE')
+                temp = xp.fft.ifftshift( xp.fft.fft2( xp.fft.fftshift( focal_masks[j] ) ) ) / focal_masks[j].shape[0]
+#                 temp *= 352.61210727101786/xp.max(xp.abs(temp))
+                print('Max', abs(temp).max())
+#                 misc.imshow2(xp.abs(temp), xp.angle(temp), 
+#                              'Temp Amp: {:d},{:d}'.format(i,j+1), 'Temp Phs: {:d},{:d}'.format(i,j+1), npix=32, grid=True)
+                focal_mask -= self.mft(temp, nfp*focal_grid_deltas[j]/2, nfp, forward=False, centering='FFTSTYLE')
                 misc.imshow2(xp.abs(focal_mask), xp.angle(focal_mask),
                              'Focal Mask Amp: {:d},{:d}'.format(i,j+1), 'Focal mask Phs: {:d},{:d}'.format(i,j+1), npix=64)
-        
+            
+            print('Delta:', delta)
             focal_grid_deltas.append(delta)
             focal_grids.append(focal_grid)
             focal_masks.append(copy.copy(focal_mask))

@@ -6,6 +6,7 @@
 # Ignore .ipynb_checkpoints
 .ipynb_checkpoints/
 __pycache__/
+.vscode/
 
 # Ignore data for the jacobians and saved images
 jacobians/

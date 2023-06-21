@@ -40,6 +40,7 @@ class OTE():
                  use_opds=True,
                  m2_shift=None,
                  m3_shift=None,
+                 index=3.0,
                 ):
         
         self.pupil_diam = 6.5*u.m
@@ -62,6 +63,8 @@ class OTE():
         self.m2_shift = m2_shift
         self.m3_shift = m3_shift
         
+        self.index = index
+        
         self.defocus = 0.0*u.mm
         
         self.use_opds = use_opds
@@ -75,19 +78,19 @@ class OTE():
         seed1, seed2, seed3, seed4 = (1,2,3,4)
         
         m1wf = poppy.FresnelWavefront(beam_radius=self.m1_diam/2, wavelength=self.wavelength_c, npix=self.npix, oversample=1)
-        m1_opd = poppy.StatisticalPSDWFE(index=3.0, wfe=10*u.nm, radius=self.m1_diam/2, seed=seed1).get_opd(m1wf)
+        m1_opd = poppy.StatisticalPSDWFE(index=self.index, wfe=10*u.nm, radius=self.m1_diam/2, seed=seed1).get_opd(m1wf)
         self.m1_opd = poppy.ArrayOpticalElement(opd=m1_opd, pixelscale=m1wf.pixelscale)
         
         m2wf = poppy.FresnelWavefront(beam_radius=self.m2_diam/2, wavelength=self.wavelength_c, npix=self.npix, oversample=1)
-        m2_opd = poppy.StatisticalPSDWFE(index=3.0, wfe=10*u.nm, radius=self.m2_diam/2, seed=seed2).get_opd(m2wf)
+        m2_opd = poppy.StatisticalPSDWFE(index=self.index, wfe=10*u.nm, radius=self.m2_diam/2, seed=seed2).get_opd(m2wf)
         self.m2_opd = poppy.ArrayOpticalElement(opd=m2_opd, pixelscale=m2wf.pixelscale)
         
         m3wf = poppy.FresnelWavefront(beam_radius=self.m3_diam/2, wavelength=self.wavelength_c, npix=self.npix, oversample=1)
-        m3_opd = poppy.StatisticalPSDWFE(index=3.0, wfe=10*u.nm, radius=self.m3_diam/2, seed=seed3).get_opd(m3wf)
+        m3_opd = poppy.StatisticalPSDWFE(index=self.index, wfe=10*u.nm, radius=self.m3_diam/2, seed=seed3).get_opd(m3wf)
         self.m3_opd = poppy.ArrayOpticalElement(opd=m3_opd, pixelscale=m3wf.pixelscale)
         
         m4wf = poppy.FresnelWavefront(beam_radius=self.m4_diam/2, wavelength=self.wavelength_c, npix=self.npix, oversample=1)
-        m4_opd = poppy.StatisticalPSDWFE(index=3.0, wfe=10*u.nm, radius=self.m4_diam/2, seed=seed4).get_opd(m4wf)
+        m4_opd = poppy.StatisticalPSDWFE(index=self.index, wfe=10*u.nm, radius=self.m4_diam/2, seed=seed4).get_opd(m4wf)
         self.m4_opd = poppy.ArrayOpticalElement(opd=m4_opd, pixelscale=m4wf.pixelscale)
         
     def shift_surface_errors(surf_element, shift=np.array([0,0])*u.m):

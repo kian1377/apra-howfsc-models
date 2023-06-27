@@ -33,7 +33,7 @@ class CORO():
 
     def __init__(self, 
                  wavelength=None, 
-                 npix=128, 
+                 npix=256, 
                  oversample=16,
                  npsf=100,
                  psf_pixelscale=5e-6*u.m/u.pix,
@@ -41,23 +41,18 @@ class CORO():
                  detector_rotation=0, 
                  dm_ref=np.zeros((34,34)),
                  dm_inf=None, # defaults to inf.fits
-                 im_norm=None,
+                 wf_norm='none',
+                 im_norm=1,
                  RETRIEVED=None,
                  APODIZER=None,
                  FPM=None,
                  LYOT=None):
         
-        poppy.accel_math.update_math_settings()
-        
-        self.is_model = True
-        
-        self.wavelength_c = 750e-9*u.m
-        if wavelength is None: 
-            self.wavelength = self.wavelength_c
-        else: 
-            self.wavelength = wavelength
-        
+        self.wavelength_c = 650e-9*u.m
         self.pupil_diam = 10.2*u.mm
+        
+        self.wavelength = self.wavelength_c if wavelength is None else wavelength
+        
         self.npix = npix
         self.oversample = oversample
         
@@ -67,19 +62,20 @@ class CORO():
             self.psf_pixelscale_lamD = (1/4.2) * self.psf_pixelscale.to(u.m/u.pix).value/5e-6
         else:
             self.psf_pixelscale_lamD = psf_pixelscale_lamD
-            self.psf_pixelscale = 5e-6*u.m/u.pix / self.psf_pixelscale_lamD/(1/4.25)
+            self.psf_pixelscale = 5e-6*u.m/u.pix / self.psf_pixelscale_lamD/(1/4.2)
         
         self.as_per_lamD = ((self.wavelength_c/self.pupil_diam)*u.radian).to(u.arcsec)
         self.psf_pixelscale_as = self.psf_pixelscale_lamD * self.as_per_lamD * self.oversample
         
         self.dm_inf = 'inf.fits' if dm_inf is None else dm_inf
         
-        self.norm = 'first'
+        self.wf_norm = wf_norm
+        self.im_norm = 1
         
-        self.APODIZER = poppy.ScalarTransmission(name='Apodizer Place-holder') if APODIZER is None else APODIZER
-        self.RETRIEVED = poppy.ScalarTransmission(name='Retrieved WFE Place-holder') if RETRIEVED is None else RETRIEVED
-        self.FPM = poppy.ScalarTransmission(name='FPM Place-holder') if FPM is None else FPM
-        self.LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if LYOT is None else LYOT
+        self.APODIZER = APODIZER
+        self.RETRIEVED = RETRIEVED
+        self.FPM = FPM
+        self.LYOT = LYOT
         self.init_dm()
         
         self.det_rotation = detector_rotation
@@ -158,9 +154,9 @@ class CORO():
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_osys()
         self.init_inwave()
-        _, wfs = self.osys.calc_psf(inwave=self.inwave, normalize=self.norm, return_intermediates=True)
+        _, wfs = self.osys.calc_psf(inwave=self.inwave, normalize=self.wf_norm, return_intermediates=True)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        
+        wfs[-1].wavefront /= np.sqrt(self.im_norm)
         return wfs
     
     def calc_psf(self, quiet=True): # method for getting the PSF in photons
@@ -168,15 +164,17 @@ class CORO():
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_osys()
         self.init_inwave()
-        _, wf = self.osys.calc_psf(inwave=self.inwave, normalize=self.norm, return_final=True, return_intermediates=False)
+        _, wf = self.osys.calc_psf(inwave=self.inwave, normalize=self.wf_norm, return_final=True, return_intermediates=False)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        return wf[0].wavefront
+        return wf[0].wavefront/np.sqrt(self.im_norm)
     
     def snap(self): # method for getting the PSF in photons
         self.init_osys()
         self.init_inwave()
-        _, wf = self.osys.calc_psf(inwave=self.inwave, normalize=self.norm, return_intermediates=False, return_final=True)
-        return wf[0].intensity
+        _, wf = self.osys.calc_psf(inwave=self.inwave, normalize=self.wf_norm, return_intermediates=False, return_final=True)
+        image = wf[0].intensity
+        image /= self.im_norm
+        return image
     
 
 

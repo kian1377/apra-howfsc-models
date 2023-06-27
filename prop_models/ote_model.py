@@ -121,6 +121,9 @@ class OTE():
         m3 = poppy.QuadraticLens(fl_m3, name='M3')
         m4 = poppy.ScalarTransmission()
         
+        m2_opd = self.m2_opd if self.m2_shift is None else self.shift_surface_errors(self.m2_opd, self.m2_shift)
+        m3_opd = self.m3_opd if self.m3_shift is None else self.shift_surface_errors(self.m3_opd, self.m3_shift)
+        
         fosys = poppy.FresnelOpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, beam_ratio=1/self.oversample)
         
         fosys.add_optic(PUPIL)

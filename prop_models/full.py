@@ -33,30 +33,26 @@ class CORO():
 
     def __init__(self, 
                  wavelength=None, 
-                 npix=128, 
-                 oversample=16,
+                 npix=512, 
+                 oversample=8,
                  npsf=100,
                  psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
-                 use_opds=False,
                  detector_rotation=0, 
                  dm_ref=np.zeros((34,34)),
                  dm_inf=None, # defaults to inf.fits
-                 im_norm=None,
+                 wf_norm='none',
+                 im_norm=1,
+                 use_opds=False,
                  OTEWFE=None,
                  APODIZER=None,
                  FPM=None,
                  LYOT=None):
         
-        poppy.accel_math.update_math_settings()
+        self.wavelength_c = 650e-9*u.m
+        self.pupil_diam = 10.2*u.mm
         
-        self.is_model = True
-        
-        self.wavelength_c = 750e-9*u.m
-        if wavelength is None: 
-            self.wavelength = self.wavelength_c
-        else: 
-            self.wavelength = wavelength
+        self.wavelength = self.wavelength_c if wavelength is None else wavelength
         
         self.npix = npix
         self.oversample = oversample
@@ -67,11 +63,13 @@ class CORO():
             self.psf_pixelscale_lamD = (1/4.2) * self.psf_pixelscale.to(u.m/u.pix).value/5e-6
         else:
             self.psf_pixelscale_lamD = psf_pixelscale_lamD
-            self.psf_pixelscale = 5e-6*u.m/u.pix / self.psf_pixelscale_lamD/(1/4.25)
+            self.psf_pixelscale = 5e-6*u.m/u.pix / self.psf_pixelscale_lamD/(1/4.2)
         
         self.dm_inf = 'inf.fits' if dm_inf is None else dm_inf
         
-        self.norm = 'first'
+        self.wf_norm = 'none'
+        self.im_norm = im_norm
+        
         self.defocus = 0*u.nm
         self.use_opds = use_opds
         
@@ -95,8 +93,12 @@ class CORO():
         
         self.det_rotation = detector_rotation
         
+        self.PUPIL = poppy.CircularAperture(radius=self.pupil_diam/2)
+        wf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength_c,
+                                    npix=self.npix, oversample=self.oversample)
+        self.pupil_mask = self.PUPIL.get_transmission(wf)
+        
         self.init_opds()
-        self.init_fosys()
         
     def getattr(self, attr):
         return getattr(self, attr)
@@ -170,11 +172,11 @@ class CORO():
         LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if self.LYOT is None else self.LYOT
         
         # define FresnelOpticalSystem and add optics
-        self.pupil_diam = 10.2*u.mm
         fosys = poppy.FresnelOpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, beam_ratio=1/self.oversample)
         
-        fosys.add_optic(poppy.CircularAperture(radius=self.pupil_diam/2)) 
-        fosys.add_optic(OTEWFE)
+        
+        fosys.add_optic(self.PUPIL) 
+        if self.use_opds: fosys.add_optic(OTEWFE)
         fosys.add_optic(self.DM)
         fosys.add_optic(oap1, distance=self.fl_oap1)
         fosys.add_optic(oap1_ap)
@@ -194,20 +196,23 @@ class CORO():
         fosys.add_optic(oap4_ap)
         if self.use_opds: fosys.add_optic(self.oap4_opd)
         fosys.add_optic(poppy.ScalarTransmission('Lyot Stop Plane'), distance=self.fl_oap4)
-        fosys.add_optic(LYOT)
-        fosys.add_optic(oap5, distance=self.fl_oap5)
-        fosys.add_optic(oap5_ap)
-        if self.use_opds: fosys.add_optic(self.oap5_opd)
-#         fosys.add_optic(poppy.ScalarTransmission('Image Plane'), distance=self.fl_oap5 + self.defocus)
-#         self.detector = poppy.Detector(pixelscale=self.psf_pixelscale, fov_pixels=self.npsf, interp_order=self.interp_order)
-        fosys.add_optic(poppy.Detector(pixelscale=self.psf_pixelscale, fov_pixels=self.npsf, interp_order=3),
-                        distance=self.fl_oap5 + self.defocus)
-    
-        self.inter_fp_index = 5 if self.use_opds else 4
-        self.fpm_index = 13 if self.use_opds else 10
-        self.image_index = 22 if self.use_opds else 17
+        if self.image_pupil:
+            self.fosys = fosys
+            return
+        else:
+            fosys.add_optic(LYOT)
+            fosys.add_optic(oap5, distance=self.fl_oap5)
+            fosys.add_optic(oap5_ap)
+            if self.use_opds: fosys.add_optic(self.oap5_opd)
+            fosys.add_optic(poppy.Detector(pixelscale=self.psf_pixelscale, fov_pixels=self.npsf, interp_order=3),
+                            distance=self.fl_oap5 + self.defocus)
+
+            self.inter_fp_index = 5 if self.use_opds else 4
+            self.fpm_index = 13 if self.use_opds else 10
+            self.image_index = 22 if self.use_opds else 17
         
-        self.fosys = fosys
+            self.fosys = fosys
+            return
         
     def init_opds(self, seeds=None):
         
@@ -224,29 +229,51 @@ class CORO():
         self.inwave = inwave
     
     def calc_wfs(self, quiet=False):
+        self.image_pupil = False
         start = time.time()
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_fosys()
         self.init_inwave()
-        _, wfs = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_intermediates=True)
+        self.pupil_mask = self.PUPIL.get_transmission(self.inwave)>0
+        _, wfs = self.fosys.calc_psf(inwave=self.inwave, normalize=self.wf_norm, return_intermediates=True)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
+        
+        wfs[-1].wavefront /= np.sqrt(self.im_norm)
         
         return wfs
     
     def calc_psf(self, quiet=True): # method for getting the PSF in photons
+        self.image_pupil = False
         start = time.time()
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_fosys()
         self.init_inwave()
-        _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_final=True, return_intermediates=False)
+        self.pupil_mask = self.PUPIL.get_transmission(self.inwave)>0
+        _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.wf_norm, return_final=True, return_intermediates=False)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        return wf[0].wavefront
+            
+        psf = wf[0].wavefront
+        psf /= np.sqrt(self.im_norm)
+        return psf
+    
     
     def snap(self): # method for getting the PSF in photons
+        self.image_pupil = False
         self.init_fosys()
         self.init_inwave()
-        _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_intermediates=False, return_final=True)
-        return wf[0].intensity
+        self.pupil_mask = self.PUPIL.get_transmission(self.inwave)>0
+        _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.wf_norm, return_intermediates=False, return_final=True)
+        image = wf[0].intensity
+        image /= self.im_norm
+        return image
     
-    
-    
+    def calc_pupil(self):
+        self.image_pupil = True
+        self.init_fosys()
+        self.init_inwave()
+        self.pupil_mask = self.PUPIL.get_transmission(self.inwave)>0
+        _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.wf_norm, return_intermediates=False, return_final=True)
+        pupil_wf = wf[0].wavefront
+        
+        return pupil_wf
+        

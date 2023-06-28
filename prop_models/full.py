@@ -60,7 +60,7 @@ class CORO():
         self.npsf = npsf
         if psf_pixelscale_lamD is None: # overrides psf_pixelscale this way
             self.psf_pixelscale = psf_pixelscale
-            self.psf_pixelscale_lamD = (1/4.2) * self.psf_pixelscale.to(u.m/u.pix).value/5e-6
+            self.psf_pixelscale_lamD = (1/3.6) * self.psf_pixelscale.to(u.m/u.pix).value/5e-6
         else:
             self.psf_pixelscale_lamD = psf_pixelscale_lamD
             self.psf_pixelscale = 5e-6*u.m/u.pix / self.psf_pixelscale_lamD/(1/4.2)
@@ -77,6 +77,8 @@ class CORO():
         self.APODIZER = poppy.ScalarTransmission(name='Apodizer Place-holder') if APODIZER is None else APODIZER
         self.FPM = poppy.ScalarTransmission(name='FPM Place-holder') if FPM is None else FPM
         self.LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if LYOT is None else LYOT
+        
+        self.dm_ref = dm_ref
         self.init_dm()
         
         self.oap1_diam = 12.7*u.mm
@@ -95,7 +97,7 @@ class CORO():
         
         self.PUPIL = poppy.CircularAperture(radius=self.pupil_diam/2)
         wf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength_c,
-                                    npix=self.npix, oversample=self.oversample)
+                                    npix=self.npix, oversample=1)
         self.pupil_mask = self.PUPIL.get_transmission(wf)
         
         self.init_opds()
@@ -129,16 +131,24 @@ class CORO():
                                                   )
         
     def reset_dm(self):
+        self.set_dm(self.dm_ref)
+    
+    def zero_dm(self):
         self.set_dm(np.zeros((self.Nact,self.Nact)))
         
     def set_dm(self, dm_command):
-        self.DM.set_surface(dm_command)
+        self.DM.set_surface(ensure_np_array(dm_command))
         
     def add_dm(self, dm_command):
-        self.DM.set_surface(self.get_dm() + dm_command)
+        self.DM.set_surface(self.get_dm() + ensure_np_array(dm_command))
         
     def get_dm(self):
         return ensure_np_array(self.DM.surface)
+    
+    def map_actuators_to_command(self, act_vector):
+        command = np.zeros((self.Nact, self.Nact))
+        command.ravel()[self.dm_mask.ravel()] = ensure_np_array(act_vector)
+        return command
     
     def oaefl(self, roc, oad, k=-1):
         """

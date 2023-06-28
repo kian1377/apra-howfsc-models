@@ -59,7 +59,7 @@ class CORO():
         self.npsf = npsf
         if psf_pixelscale_lamD is None: # overrides psf_pixelscale this way
             self.psf_pixelscale = psf_pixelscale
-            self.psf_pixelscale_lamD = (1/4.2) * self.psf_pixelscale.to(u.m/u.pix).value/5e-6
+            self.psf_pixelscale_lamD = (1/3.6) * self.psf_pixelscale.to(u.m/u.pix).value/5e-6
         else:
             self.psf_pixelscale_lamD = psf_pixelscale_lamD
             self.psf_pixelscale = 5e-6*u.m/u.pix / self.psf_pixelscale_lamD/(1/4.2)
@@ -76,6 +76,8 @@ class CORO():
         self.RETRIEVED = RETRIEVED
         self.FPM = FPM
         self.LYOT = LYOT
+        
+        self.dm_ref = dm_ref
         self.init_dm()
         
         self.det_rotation = detector_rotation
@@ -111,16 +113,24 @@ class CORO():
                                                   )
         
     def reset_dm(self):
+        self.set_dm(self.dm_ref)
+    
+    def zero_dm(self):
         self.set_dm(np.zeros((self.Nact,self.Nact)))
         
     def set_dm(self, dm_command):
-        self.DM.set_surface(dm_command)
+        self.DM.set_surface(ensure_np_array(dm_command))
         
     def add_dm(self, dm_command):
-        self.DM.set_surface(self.get_dm() + dm_command)
+        self.DM.set_surface(self.get_dm() + ensure_np_array(dm_command))
         
     def get_dm(self):
         return ensure_np_array(self.DM.surface)
+    
+    def map_actuators_to_command(self, act_vector):
+        command = np.zeros((self.Nact, self.Nact))
+        command.ravel()[self.dm_mask.ravel()] = ensure_np_array(act_vector)
+        return command
     
     def init_osys(self):
         RETRIEVED = poppy.ScalarTransmission(name='Retrieved WFE Place-holder') if self.RETRIEVED is None else self.RETRIEVED

@@ -23,6 +23,9 @@ else:
     xp = np
     _scipy = scipy
 
+    
+import misc
+
 def ensure_np_array(arr):
     if isinstance(arr, np.ndarray):
         return arr
@@ -109,7 +112,7 @@ class OTE():
         d_m1_m2 = 16638.12910134875*u.mm
         d_m2_m3 = 18500.0*u.mm
         d_m3_m4 = 1895.0*u.mm
-        d_m4_fp = 2091.997751264193*u.mm
+        d_m4_fp = 2091.997751264193*u.mm - 0.0062856074*u.m
         
         fl_m1 = 3.652962023674745E+004/2*u.mm
         fl_m2 = -3.636649801410836E+003/2*u.mm
@@ -135,7 +138,7 @@ class OTE():
         if self.use_opds: fosys.add_optic(self.m3_opd)
         fosys.add_optic(m4, distance=d_m3_m4)
         if self.use_opds: fosys.add_optic(self.m4_opd)
-        fosys.add_optic(poppy.ScalarTransmission('Image'), distance=d_m4_fp + -0.0062856074*u.m + self.defocus)
+        fosys.add_optic(poppy.ScalarTransmission('Image'), distance=d_m4_fp + self.defocus)
         if self.propagate_to_pupil:
             fosys.add_optic(poppy.QuadraticLens(224.99998119573664*u.m), distance=224.99998119573664*u.m)
             fosys.add_optic(poppy.ScalarTransmission('Pupil Plane'), distance=224.99998119573664*u.m)
@@ -146,7 +149,7 @@ class OTE():
     def pupil_mask(self):
         PUPIL = poppy.CircularAperture(radius=self.pupil_diam/2)
         wf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
-                                        npix=self.npix, oversample=self.oversample)
+                                        npix=self.npix, oversample=1)
         self._pupil_mask = PUPIL.get_transmission(wf)
         return self._pupil_mask
     
@@ -174,16 +177,36 @@ class OTE():
         _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_final=True, return_intermediates=False)
         return wf[0].wavefront
     
-    def calc_pupil(self):
-        elf.propagate_to_pupil = True
-        start = time.time()
-        if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
-        self.init_fosys()
-        self.init_inwave()
-        _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_final=True, return_intermediates=False)
-        if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        return wf[0].wavefront
+#     def calc_pupil(self, return_amp_opd=True):
+#         self.propagate_to_pupil = True
+#         self.init_fosys()
+#         self.init_inwave()
+#         _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_final=True, return_intermediates=False)
+#         pupil_wf = misc.pad_or_crop(wf[0].wavefront, self.npix)
+        
+#         pupil_amp = xp.abs(pupil_wf)*self.pupil_mask
+#         pupil_opd = xp.angle(pupil_wf)*self.pupil_mask * self.wavelength_c.to_value(u.m)/(2*np.pi)
+        
+#         if return_amp_opd:
+#             return pupil_amp, pupil_opd
+#         else:
+#             pupil_wf = pupil_amp *xp.exp(1j*2*np.pi/self.wavelength_c.to_value(u.m) * pupil_opd)
+#             return pupil_wf
     
+    def calc_pupil(self, return_amp_opd=True):
+        psf = self.calc_psf()
+        pupil_wf = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(psf))) / psf.shape[0]
+        
+        pupil_wf = misc.pad_or_crop(pupil_wf, self.npix)
+        
+        pupil_amp = xp.abs(pupil_wf)*self.pupil_mask
+        pupil_opd = xp.angle(pupil_wf)*self.pupil_mask * self.wavelength_c.to_value(u.m)/(2*np.pi)
+        
+        if return_amp_opd:
+            return pupil_amp, pupil_opd
+        else:
+            pupil_wf = pupil_amp *xp.exp(1j*2*np.pi/self.wavelength_c.to_value(u.m) * pupil_opd)
+            return pupil_wf
     
     
     

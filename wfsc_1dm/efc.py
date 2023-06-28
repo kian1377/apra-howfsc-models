@@ -1,25 +1,24 @@
 import numpy as np
 try:
     import cupy as cp
-#     cp.cuda.Device(0).compute_capability
     xp = cp
 except ImportError:
     xp = np
     
 import poppy
-    
-import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib.colors import LogNorm
 
 import astropy.units as u
 import time
 import copy
 from IPython.display import display, clear_output
 
+import imshows
 from . import utils
 
-def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
+def build_jacobian(sysi, epsilon, 
+                   dark_mask,
+                   plot=False,
+                  ):
     start = time.time()
     
     amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
@@ -36,6 +35,7 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
     
     responses = xp.zeros((2*Ndh, Nacts))
     count = 0
+    print('Calculating Jacobian: ')
     for i in range(num_modes):
         if dm_mask[i]:
             response = 0
@@ -47,22 +47,24 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
                 response += amp*wavefront.flatten()/np.var(amps)
                 sysi.add_dm(-amp*mode)
                 
-            responses[::2,count] = response[dark_mask].real
-            responses[1::2,count] = response[dark_mask].imag
+            responses[::2,count] = response[dark_mask.ravel()].real
+            responses[1::2,count] = response[dark_mask.ravel()].imag
             
-            if print_status:
-                print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start))
+            print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start), end='')
+            print('\r', end='')
             count += 1
         else:
             pass
+    print()
     print('Jacobian built in {:.3f} sec'.format(time.time()-start))
     
     return responses
 
 def run_efc_perfect(sysi, 
                     jac, 
-                    reg_fun,
-                    reg_conds,
+                    control_matrix,
+#                     reg_fun,
+#                     reg_conds,
                     dark_mask, 
                     Imax_unocc=1,
                     efc_loop_gain=0.5, 
@@ -93,72 +95,44 @@ def run_efc_perfect(sysi,
     dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
     print()
     for i in range(iterations+1):
-        try:
-            print('\tRunning iteration {:d}/{:d}.'.format(i+1, iterations))
+        print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
+        sysi.set_dm(dm_ref + dm_command)
 
-            if i==0 or i in reg_conds[0]:
-                reg_cond_ind = np.argwhere(i==reg_conds[0])[0][0]
-                reg_cond = reg_conds[1, reg_cond_ind]
-                print('\tComputing EFC matrix via ' + reg_fun.__name__ + ' with condition value {:.2e}'.format(reg_cond))
-                efc_matrix = reg_fun(jac, reg_cond)
+        electric_field = sysi.calc_psf()
 
-            sysi.set_dm(dm_ref + dm_command)
+        commands.append(sysi.get_dm())
+        efields.append(copy.copy(electric_field))
 
-            electric_field = sysi.calc_psf()
+        efield_ri = xp.zeros(2*Ndh)
+        efield_ri[::2] = electric_field[dark_mask].real
+        efield_ri[1::2] = electric_field[dark_mask].imag
+        del_dm = -control_matrix.dot(efield_ri)
 
-            commands.append(sysi.get_dm())
-            efields.append(copy.copy(electric_field))
+        del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
+        dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
 
-            efield_ri = xp.zeros(2*Ndh)
-            efield_ri[::2] = electric_field[dark_mask].real
-            efield_ri[1::2] = electric_field[dark_mask].imag
-            del_dm = -efc_matrix.dot(efield_ri)
+        if plot_current or plot_all:
 
-            del_dm = utils.map_acts_to_dm(del_dm.get(), dm_mask)
-            dm_command += efc_loop_gain * del_dm
+            imshows.imshow2(commands[i], xp.abs(efields[i])**2, 
+                            'DM Command', 'Image: Iteration {:d}'.format(i),
+                            lognorm2=True)
+
+            if plot_sms:
+                sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
+
+            if plot_radial_contrast:
+                utils.plot_radial_contrast(xp.abs(efields[i])**2, dark_mask, sysi.psf_pixelscale_lamD, nbins=100)
             
-            if plot_current or plot_all:
-                if not plot_all: clear_output(wait=True)
-                
-                im_ext = [-sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD,
-                          -sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD]
-                
-                fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(10,4), dpi=125)
-                
-                im = ax[0].imshow(commands[i])
-                ax[0].set_title('DM Command')
-                divider = make_axes_locatable(ax[0])
-                cax = divider.append_axes("right", size="4%", pad=0.075)
-                fig.colorbar(im, cax=cax)
-                
-                im = ax[1].imshow(utils.ensure_np_array(np.abs(electric_field)**2), cmap='magma', norm=LogNorm(), extent=im_ext)
-                ax[1].set_title('Image: Iteration {:d}'.format(i))
-                divider = make_axes_locatable(ax[1])
-                cax = divider.append_axes("right", size="4%", pad=0.075)
-                fig.colorbar(im, cax=cax)
-                
-                plt.close()
-                display(fig)
-                
-                if plot_sms:
-                    sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
-                    
-                if plot_radial_contrast:
-                    utils.plot_radial_contrast(np.abs(electric_field)**2, dark_mask, sysi.psf_pixelscale_lamD, nbins=30)
-        except KeyboardInterrupt:
-            print('EFC interrupted.')
-            break
-        
+            if not plot_all: clear_output(wait=True)
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
-    return efields, commands
+    return commands, efields
 
 def run_efc_pwp(sysi, 
                 pwp_fun,
                 pwp_kwargs,
-                jac, 
-                reg_fun,
-                reg_conds,
+                jac,
+                control_matrix,
                 dark_mask, 
                 Imax_unocc=1,
                 efc_loop_gain=0.5, 
@@ -180,7 +154,7 @@ def run_efc_pwp(sysi,
     print('Max singular value squared:\t', s.max()**2)
     print('alpha^2:\t\t\t', alpha2) 
     
-    N_DH = dark_mask.sum()
+    Nmask = int(dark_mask.sum())
     
     dm_mask = sysi.dm_mask.flatten()
     if hasattr(sysi, 'bad_acts'):
@@ -188,82 +162,51 @@ def run_efc_pwp(sysi,
     
     dm_ref = sysi.get_dm()
     dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
-    efield_ri = np.zeros(2*dark_mask.sum())
+    efield_ri = xp.zeros(2*Nmask)
     for i in range(iterations+1):
-        try:
-            print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
-            
-            if i==0 or i in reg_conds[0]:
-                reg_cond_ind = np.argwhere(i==reg_conds[0])[0][0]
-                reg_cond = reg_conds[1, reg_cond_ind]
-                print('\tComputing EFC matrix via ' + reg_fun.__name__ + ' with condition value {:.2e}'.format(reg_cond))
-                efc_matrix = reg_fun(jac, reg_cond)
-                
-            sysi.set_dm(dm_ref + dm_command)
-            E_est = pwp_fun(sysi, dark_mask, **pwp_kwargs)
-            I_exact = sysi.snap()
-            
-            I_est = np.abs(E_est)**2
-            rms_est = np.sqrt(np.mean(I_est[dark_mask]**2))
-            rms_im = np.sqrt(np.mean(I_exact[dark_mask]**2))
-            mf = rms_est/rms_im # measure how well the estimate and image match
-            
-            commands.append(sysi.get_dm())
-            efields.append(copy.copy(E_est))
-            images.append(copy.copy(I_exact))
+        print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
+        sysi.set_dm(dm_ref + dm_command)
+        E_est = pwp_fun(sysi, dark_mask, **pwp_kwargs)
+        I_est = xp.abs(E_est)**2
+        I_exact = sysi.snap()
 
-            efield_ri[::2] = E_est[dark_mask].real
-            efield_ri[1::2] = E_est[dark_mask].imag
-            del_dm = -efc_matrix.dot(efield_ri)
-            
-            del_dm = utils.map_acts_to_dm(del_dm, dm_mask)
-            dm_command += efc_loop_gain * del_dm
-            
-            if display_current or display_all:
-                if not display_all: clear_output(wait=True)
-                    
-                print('Estimation and exact image match factor is {:.3f}'.format(mf))
-                fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(10,4), dpi=125)
-                im = ax[0].imshow(commands[i], cmap='viridis')
-                ax[0].set_title('DM Command')
-                divider = make_axes_locatable(ax[0])
-                cax = divider.append_axes("right", size="4%", pad=0.075)
-                fig.colorbar(im, cax=cax)
-    
-                im = ax[1].imshow(I_est, 
-                                 norm=LogNorm(vmin=(np.abs(electric_field)**2).max()/1e7),
-                                 extent=extent)
-                ax[1].set_title('Estimated Intesnity'.format(i))
-                divider = make_axes_locatable(ax[1])
-                cax = divider.append_axes("right", size="4%", pad=0.075)
-                fig.colorbar(im, cax=cax)
-                
-                im = ax[2].imshow(I_exact, 
-                                 norm=LogNorm(vmin=(np.abs(electric_field)**2).max()/1e7),
-                                 extent=[-sysi.npsf//2*sysi.psf_pixelscale_lamD,
-                                         sysi.npsf//2*sysi.psf_pixelscale_lamD,
-                                         -sysi.npsf//2*sysi.psf_pixelscale_lamD,
-                                         sysi.npsf//2*sysi.psf_pixelscale_lamD])
-                ax[2].set_title('Image: Iteration {:d}'.format(i))
-                divider = make_axes_locatable(ax[2])
-                cax = divider.append_axes("right", size="4%", pad=0.075)
-                fig.colorbar(im, cax=cax)
-                
-                if plot_sms:
-                    sms_fig = utils.sms(U, s, alpha2, efield_ri, N_DH, Imax_unocc, i)
-        except KeyboardInterrupt:
-            print('EFC interrupted.')
-            break
+        rms_est = np.sqrt(np.mean(I_est[dark_mask]**2))
+        rms_im = np.sqrt(np.mean(I_exact[dark_mask]**2))
+        mf = rms_est/rms_im # measure how well the estimate and image match
+
+        commands.append(sysi.get_dm())
+        efields.append(copy.copy(E_est))
+        images.append(copy.copy(I_exact))
+
+        efield_ri[::2] = E_est[dark_mask].real
+        efield_ri[1::2] = E_est[dark_mask].imag
+        del_dm = -control_matrix.dot(efield_ri)
+
+        del_dm = sysi.map_actuators_to_command(del_dm)
+        dm_command += efc_loop_gain * del_dm
+
+        if plot_current or plot_all:
+            if not plot_all: clear_output(wait=True)
+
+            imshows.imshow3(commands[i], I_est, I_exact,
+                            lognorm2=True, lognorm3=True)
+
+            if plot_sms:
+                sms_fig = utils.sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
+
+            if plot_radial_contrast:
+                utils.plot_radial_contrast(images[-1], dark_mask, sysi.psf_pixelscale_lamD, nbins=100)
+
         
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
-    return images, efields, commands
+    return commands, efields, images
 
 def single_iteration(electric_field, control_matrix, dark_mask, dm_mask):
     Ndh = int(dark_mask.sum())
     efield_ri = xp.zeros(2*Ndh)
-    efield_ri[::2] = electric_field[dark_mask].real
-    efield_ri[1::2] = electric_field[dark_mask].imag
+    efield_ri[::2] = electric_field[dark_mask.ravel()].real
+    efield_ri[1::2] = electric_field[dark_mask.ravel()].imag
     del_dm = -control_matrix.dot(efield_ri)
 
     del_dm = utils.map_acts_to_dm(del_dm.get(), dm_mask)

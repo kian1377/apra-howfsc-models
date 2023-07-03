@@ -66,7 +66,7 @@ def beta_reg(S, beta=-1):
     rho = xp.diag(sts)
     alpha2 = rho.max()
 
-    gain_matrix = xp.matmul( xp.linalg.inv( sts + alpha2*10.0**(beta)*xp.eye(sts.shape[0]) ), S.T)
+    gain_matrix = xp.matmul( xp.linalg.inv( sts + alpha2*10.0**(beta)*xp.eye(sts.shape[0], dtype=S.dtype) ), S.T)
     return gain_matrix
 
 def create_circ_mask(h, w, center=None, radius=None):

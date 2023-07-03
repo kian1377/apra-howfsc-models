@@ -18,6 +18,7 @@ from . import utils
 def build_jacobian(sysi, epsilon, 
                    dark_mask,
                    plot=False,
+                   dtype=None, 
                   ):
     start = time.time()
     
@@ -33,7 +34,10 @@ def build_jacobian(sysi, epsilon,
     num_modes = sysi.Nact**2
     modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
     
-    responses = xp.zeros((2*Ndh, Nacts))
+    if dtype is None: 
+        dtype = xp.float64
+    
+    responses = xp.zeros((2*Ndh, Nacts), dtype=dtype)
     count = 0
     print('Calculating Jacobian: ')
     for i in range(num_modes):
@@ -103,11 +107,12 @@ def run_efc_perfect(sysi,
         commands.append(sysi.get_dm())
         efields.append(copy.copy(electric_field))
 
-        efield_ri = xp.zeros(2*Ndh)
+        efield_ri = xp.zeros(2*Ndh, dtype=control_matrix.dtype)
         efield_ri[::2] = electric_field[dark_mask].real
         efield_ri[1::2] = electric_field[dark_mask].imag
         del_dm = -control_matrix.dot(efield_ri)
-
+        print(del_dm.dtype)
+        
         del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
         dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
 
@@ -115,7 +120,7 @@ def run_efc_perfect(sysi,
 
             imshows.imshow2(commands[i], xp.abs(efields[i])**2, 
                             'DM Command', 'Image: Iteration {:d}'.format(i),
-                            lognorm2=True)
+                            lognorm2=True, vmin2=1e-11)
 
             if plot_sms:
                 sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)

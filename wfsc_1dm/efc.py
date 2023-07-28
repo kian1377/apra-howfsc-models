@@ -48,7 +48,7 @@ def build_jacobian(sysi, epsilon,
 
                 sysi.add_dm(amp*mode)
                 wavefront = sysi.calc_psf()
-                response += amp*wavefront.flatten()/np.var(amps)
+                response += amp*wavefront.flatten()/(2*np.var(amps))
                 sysi.add_dm(-amp*mode)
                 
             responses[::2,count] = response[dark_mask.ravel()].real
@@ -111,7 +111,7 @@ def run_efc_perfect(sysi,
         efield_ri[::2] = electric_field[dark_mask].real
         efield_ri[1::2] = electric_field[dark_mask].imag
         del_dm = -control_matrix.dot(efield_ri)
-        print(del_dm.dtype)
+#         print(del_dm.dtype)
         
         del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
         dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
@@ -119,8 +119,8 @@ def run_efc_perfect(sysi,
         if plot_current or plot_all:
 
             imshows.imshow2(commands[i], xp.abs(efields[i])**2, 
-                            'DM Command', 'Image: Iteration {:d}'.format(i),
-                            lognorm2=True, vmin2=1e-11)
+                            'DM Command', 'Image: Iteration {:d}'.format(i), 
+                            cmap1='viridis', lognorm2=True, vmin2=1e-11)
 
             if plot_sms:
                 sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
@@ -166,7 +166,7 @@ def run_efc_pwp(sysi,
         dm_mask[sysi.bad_acts] = False
     
     dm_ref = sysi.get_dm()
-    dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
+    dm_command = np.zeros((sysi.Nact, sysi.Nact))
     efield_ri = xp.zeros(2*Nmask)
     for i in range(iterations+1):
         print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
@@ -194,7 +194,7 @@ def run_efc_pwp(sysi,
             if not plot_all: clear_output(wait=True)
 
             imshows.imshow3(commands[i], I_est, I_exact,
-                            lognorm2=True, lognorm3=True)
+                            lognorm2=True, lognorm3=True, vmin2=1e-11, vmin3=1e-11)
 
             if plot_sms:
                 sms_fig = utils.sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)

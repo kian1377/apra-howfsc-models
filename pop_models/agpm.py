@@ -13,11 +13,6 @@ from poppy.fresnel import FresnelWavefront
 from poppy import utils
 
 import numpy as np
-
-poppy.accel_math.update_math_settings()
-global xp
-from poppy.accel_math import xp
-
 import astropy.units as u
 
 
@@ -65,7 +60,6 @@ class IdealAGPM(poppy.AnalyticOpticalElement):
 
         AGPM_phasor = xp.exp(1.j * self.lp * phase) * self.get_transmission(wave)
         
-#         print(x)
         idx = xp.where(x==0)[0][0]
         idy = xp.where(y==0)[0][0]
         AGPM_phasor[idx, idy] = 0

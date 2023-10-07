@@ -10,7 +10,7 @@ import copy
 import scoobpsf
 module_path = Path(os.path.dirname(os.path.abspath(scoobpsf.__file__)))
 
-from .import custom_dm
+from .import dm
 from .math_module import xp,_scipy, ensure_np_array
 from . import imshows
 from . import utils
@@ -195,7 +195,7 @@ class SCOOB():
         r = np.sqrt(x**2 + y**2)
         self.dm_mask[r>10.5] = 0 # had to set the threshold to 10.5 instead of 10.2 to include edge actuators
         
-        self.DM = custom_dm.DeformableMirror(inf_cube=self.inf_cube, inf_fun=self.inf_fun)
+        self.DM = dm.DeformableMirror(inf_cube=self.inf_cube, inf_fun=self.inf_fun)
         
     def zero_dm(self):
         self.set_dm(np.zeros((self.Nact,self.Nact)))

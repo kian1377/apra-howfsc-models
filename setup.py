@@ -1,13 +1,13 @@
 from setuptools import setup, find_packages
 
 VERSION = '0.1.0' 
-DESCRIPTION = 'Package for running simulations of the SCOOB testbed and interfacing with the testbed'
-LONG_DESCRIPTION = 'Package for running simulations of the SCOOB testbed and interfacing with the testbed'
+DESCRIPTION = 'Package for running HOWFSC simulations of a 6.5m class coronagraph. '
+LONG_DESCRIPTION = 'Package for running HOWFSC simulations of a 6.5m class coronagraph. '
 
 # Setting up
 setup(
        # the name must match the folder name 'verysimplemodule'
-        name="scoobpsf",
+        name="apra_pop_models",
         version=VERSION,
         author="Kian Milani",
         author_email="<kianmilani@arizona.edu>",

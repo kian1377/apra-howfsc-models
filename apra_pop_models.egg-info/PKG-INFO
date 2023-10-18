@@ -1,0 +1,11 @@
+Metadata-Version: 2.1
+Name: apra-pop-models
+Version: 0.1.0
+Summary: Package for running HOWFSC simulations of a 6.5m class coronagraph. 
+Author: Kian Milani
+Author-email: <kianmilani@arizona.edu>
+Keywords: python,Coronagraph Instrument
+Classifier: Development Status :: Alpha-0.1.0
+Classifier: Programming Language :: Python :: 3
+
+Package for running HOWFSC simulations of a 6.5m class coronagraph. 

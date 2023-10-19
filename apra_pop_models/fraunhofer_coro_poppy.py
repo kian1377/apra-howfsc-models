@@ -1,33 +1,14 @@
+from .math_module import xp,_scipy, ensure_np_array
+from .import dm, utils
+from . import imshows
+
 import numpy as np
-import scipy
 import astropy.units as u
 from astropy.io import fits
-from pathlib import Path
-import pickle
 import time
+import os
+from pathlib import Path
 import copy
-
-import poppy
-
-from poppy.poppy_core import PlaneType
-pupil = PlaneType.pupil
-inter = PlaneType.intermediate
-image = PlaneType.image
-
-if poppy.accel_math._USE_CUPY:
-    import cupy as cp
-    import cupyx.scipy as _scipy
-    xp = cp
-else: 
-    cp = None
-    xp = np
-    _scipy = scipy
-    
-def ensure_np_array(arr):
-    if isinstance(arr, np.ndarray):
-        return arr
-    else:
-        return arr.get()
 
 class CORO():
 
@@ -110,6 +91,7 @@ class CORO():
         self.DM = poppy.ContinuousDeformableMirror(dm_shape=(self.Nact,self.Nact), name='DM', 
                                                    actuator_spacing=self.act_spacing, 
                                                    influence_func=self.dm_inf,
+                                                   include_factor_of_2=True, 
                                                   )
         
     def reset_dm(self):

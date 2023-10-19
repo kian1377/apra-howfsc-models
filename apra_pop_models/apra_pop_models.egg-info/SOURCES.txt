@@ -1,5 +1,0 @@
-setup.py
-apra_pop_models.egg-info/PKG-INFO
-apra_pop_models.egg-info/SOURCES.txt
-apra_pop_models.egg-info/dependency_links.txt
-apra_pop_models.egg-info/top_level.txt

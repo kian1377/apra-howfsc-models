@@ -2,6 +2,9 @@ from .math_module import xp, _scipy, ensure_np_array
 import numpy as np
 import scipy
 
+import poppy
+
+import astropy.units as u
 from astropy.io import fits
 import pickle
 
@@ -55,6 +58,63 @@ def interp_arr(arr, pixelscale, new_pixelscale, order=3):
 
         interped_arr = _scipy.ndimage.map_coordinates(arr, coords, order=order)
         return interped_arr
+
+
+def lstsq(modes, data):
+    """Least-Squares fit of modes to data.
+
+    Parameters
+    ----------
+    modes : iterable
+        modes to fit; sequence of ndarray of shape (m, n)
+    data : numpy.ndarray
+        data to fit, of shape (m, n)
+        place NaN values in data for points to ignore
+
+    Returns
+    -------
+    numpy.ndarray
+        fit coefficients
+
+    """
+    mask = xp.isfinite(data)
+    data = data[mask]
+    modes = xp.asarray(modes)
+    modes = modes.reshape((modes.shape[0], -1))  # flatten second dim
+    modes = modes[:, mask.ravel()].T  # transpose moves modes to columns, as needed for least squares fit
+    c, *_ = xp.linalg.lstsq(modes, data, rcond=None)
+    return c
+
+def generate_wfe(diam, 
+                 opd_index=2.5, amp_index=2, 
+                 opd_seed=1234, amp_seed=12345,
+                 opd_rms=10*u.nm, amp_rms=0.05,
+                 npix=256, oversample=4, 
+                 wavelength=500*u.nm):
+    amp_rms *= u.nm
+    wf = poppy.FresnelWavefront(beam_radius=diam/2, npix=npix, oversample=oversample, wavelength=wavelength)
+    wfe_opd = poppy.StatisticalPSDWFE(index=opd_index, wfe=opd_rms, radius=diam/2, seed=opd_seed).get_opd(wf)
+    wfe_amp = poppy.StatisticalPSDWFE(index=amp_index, wfe=amp_rms, radius=diam/2, seed=amp_seed).get_opd(wf)
+    # print(wfe_amp)
+    wfe_amp /= amp_rms.unit.to(u.m)
+    
+    wfe_amp = xp.asarray(ensure_np_array(wfe_amp))
+    wfe_opd = xp.asarray(ensure_np_array(wfe_opd))
+
+    mask = ensure_np_array(poppy.CircularAperture(radius=diam/2).get_transmission(wf))>0
+    Zs = ensure_np_array(poppy.zernike.arbitrary_basis(mask, nterms=3, outside=0))
+    
+    Zc_amp = lstsq(Zs, wfe_amp)
+    Zc_opd = lstsq(Zs, wfe_opd)
+    for i in range(3):
+        wfe_amp -= Zc_amp[i] * Zs[i]
+        wfe_opd -= Zc_opd[i] * Zs[i]
+    wfe_amp += 1
+
+    wfe = wfe_amp * jnp.exp(1j*2*np.pi/wavelength.to_value(u.m) * wfe_opd)
+    wfe *= jnp.asarray(ensure_np_array(poppy.CircularAperture(radius=diam/2).get_transmission(wf)))
+    
+    return wfe
 
 def save_fits(fpath, data, header=None, ow=True, quiet=False):
     if header is not None:

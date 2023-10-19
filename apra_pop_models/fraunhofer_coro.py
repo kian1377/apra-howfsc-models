@@ -1,19 +1,14 @@
+from .math_module import xp,_scipy, ensure_np_array
+from .import dm, utils
+from . import imshows
+
 import numpy as np
 import astropy.units as u
 from astropy.io import fits
 import time
 import os
 from pathlib import Path
-import ray
 import copy
-
-import scoobpsf
-module_path = Path(os.path.dirname(os.path.abspath(scoobpsf.__file__)))
-
-from .import dm
-from .math_module import xp,_scipy, ensure_np_array
-from . import imshows
-from . import utils
 
 def make_vortex_phase_mask(focal_grid_polar, charge=6, 
                            singularity=None, focal_length=500*u.mm, pupil_diam=9.7*u.mm, wavelength=632.8*u.nm):
@@ -29,26 +24,6 @@ def make_vortex_phase_mask(focal_grid_polar, charge=6,
         phasor *= mask
     
     return phasor
-
-import poppy
-def generate_wfe(diam, distance=100*u.mm, 
-                 opd_index=2.5, amp_index=2, 
-                 opd_seed=1234, amp_seed=12345,
-                 opd_rms=10*u.nm, amp_rms=0.05*u.nm,
-                 npix=256, oversample=4, 
-                 wavelength=500*u.nm):
-    wf = poppy.FresnelWavefront(beam_radius=diam/2, npix=npix, oversample=oversample, wavelength=wavelength)
-    wfe_opd = poppy.StatisticalPSDWFE(index=opd_index, wfe=opd_rms, radius=diam/2, seed=opd_seed).get_opd(wf)
-    wfe_amp = poppy.StatisticalPSDWFE(index=amp_index, wfe=amp_rms, radius=diam/2, seed=amp_seed).get_opd(wf)
-    wfe_amp /= amp_rms.unit.to(u.m)
-    wfe_amp += 1 - amp_rms.to_value(u.m)/amp_rms.unit.to(u.m)/2
-    
-    wfe_amp = xp.asarray(wfe_amp.get())
-    wfe_opd = xp.asarray(wfe_opd.get())
-    wfe = wfe_amp * xp.exp(1j*2*np.pi/wavelength.to_value(u.m) * wfe_opd)
-    wfe *= xp.asarray(poppy.CircularAperture(radius=diam/2).get_transmission(wf).get())
-    
-    return wfe
 
 def fft(arr):
     ftarr = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(arr)))

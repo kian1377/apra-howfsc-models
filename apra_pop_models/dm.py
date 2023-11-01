@@ -57,15 +57,16 @@ def make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=25, coupling=0.15,
 
     return inf, sampling
 
-
 class DeformableMirror(poppy.AnalyticOpticalElement):
+    
     
     def __init__(self, 
                  Nact=34,
                  act_spacing=300e-6*u.m,
                  pupil_diam=11.1*u.mm,
-                 aperture=None,
                  full_stroke=1.5e-6*u.m,
+                 aperture=None,
+                 include_reflection=True,
                  inf_fun=None,
                  inf_cube=None,
                  inf_sampling=None,
@@ -75,53 +76,40 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
         self.act_spacing = act_spacing
         self.active_diam = self.Nact * self.act_spacing
         self.pupil_diam = pupil_diam
-        self.aperture = aperture
+        
         self.full_stroke = full_stroke
         
-        self.mask = xp.ones((self.Nact,self.Nact), dtype=bool)
+        self.dm_mask = xp.ones((self.Nact,self.Nact), dtype=bool)
         xx = (xp.linspace(0, self.Nact-1, self.Nact) - self.Nact/2 + 1/2) * 2*self.act_spacing.to_value(u.m)
         x,y = xp.meshgrid(xx,xx)
         r = xp.sqrt(x**2 + y**2)
-        self.dm_grid = xp.array([x,y])
-        self.mask[r>(self.active_diam + self.act_spacing).to_value(u.m)] = 0
-        self.Nacts = int(xp.sum(self.mask))
+        self.dm_mask[r>(self.active_diam + self.act_spacing).to_value(u.m)] = 0
+        self.Nacts = int(xp.sum(self.dm_mask))
         
-        self.zernikes = poppy.zernike.arbitrary_basis(self.mask, nterms=15, outside=0)
-
         self.command = xp.zeros((self.Nact, self.Nact))
         self.actuators = xp.zeros(self.Nacts)
-            
-        if isinstance(inf_cube, str): 
-            print(f'Obtaining influence function data cube from {inf_cube}.')   
-            self.inf_sampling = fits.getheader(inf_cube)['SAMPLING']
-            self.inf_cube = xp.array(fits.getdata(inf_cube))
-        elif isinstance(inf_cube, np.ndarray) or isinstance(inf_cube, xp.ndarray):
-            print('Using user provided influence function data cube.')
-            if inf_sampling is None:
-                raise ValueError('Must supply influence function sampling if providing a numerical array')
-            self.inf_cube = xp.array(inf_cube)
-            self.inf_sampling = inf_sampling
-        elif inf_cube is None:
-            if inf_fun is None:
-                print('Using default influence function from inf.fits.')
-                inf_fpath = str(Path(escpsf_dir)/'inf.fits')
-                self.inf_fun = xp.array(fits.getdata(inf_fpath))
-                self.inf_sampling = fits.getheader(inf_fpath)['SAMPLING']
-            elif isinstance(inf_fun, str):
-                print(f'Obtaining influence function from {inf_fun}.')   
-                self.inf_fun = xp.array(fits.getdata(inf_fun))
-                self.inf_sampling = fits.getheader(inf_fun)['SAMPLING']
-            elif isinstance(inf_fun, xp.ndarray):
-                print('Using user provided influence function data cube.')
-                if inf_sampling is None:
-                    raise ValueError('Must supply influence function sampling if providing a numerical array')
-                self.inf_fun = inf_fun
-                self.inf_sampling = inf_sampling
-            self.build_inf_cube()
-        self.inf_matrix = self.inf_cube.reshape(self.Nacts, self.inf_cube.shape[1]**2,).T
         
+        if inf_fun is not None and inf_sampling is not None:
+            print('Using the influence function supplied.')
+            self.inf_fun = inf_fun
+            self.inf_sampling = inf_sampling
+            self.inf_matrix = None
+        elif inf_cube is not None and inf_sampling is not None:
+            print('Using the influence function cube supplied.')
+            self.inf_matrix = inf_cube.reshape(self.Nacts, self.inf_cube.shape[1]**2,).T
+            self.inf_sampling = inf_sampling
+            self.inf_fun = None
+        elif inf_fun is None and inf_cube is None:
+            print('Using default Gaussian influence function.')
+            self.inf_fun, self.inf_sampling = make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=10, coupling=0.15,)
+            self.inf_matrix = None
+            
         self.inf_pixelscale = self.act_spacing/(self.inf_sampling*u.pix)
 
+        self.include_reflection = include_reflection
+        print('Using reflection when computing OPD.')
+
+        self.aperture = aperture
         self.planetype = poppy.poppy_core.PlaneType.intermediate
         self.name = 'DM'
         
@@ -131,7 +119,7 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
 
     @command.setter
     def command(self, command_values):
-        command_values *= self.mask
+        command_values *= self.dm_mask
         self._actuators = self.map_command_to_actuators(command_values) # ensure you update the actuators if command is set
         self._command = command_values
     
@@ -143,47 +131,84 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
     def actuators(self, act_vector):
         self._command = self.map_actuators_to_command(act_vector) # ensure you update the actuators if command is set
         self._actuators = act_vector
-    
+
     def map_command_to_actuators(self, command_values):
-        actuators = command_values[self.mask]
+        actuators = command_values.ravel()[self.dm_mask.ravel()]
         return actuators
         
     def map_actuators_to_command(self, act_vector):
         command = xp.zeros((self.Nact, self.Nact))
-        command[self.mask] = act_vector
+        command[self.dm_mask] = act_vector
         return command
     
-    def build_inf_cube(self, overpad=None):
-        
-        Nsurf = int(self.inf_sampling * self.Nact)
-        if overpad is None:
-            overpad = round(self.inf_sampling)
-        
-        Nsurf_padded = Nsurf + overpad
-        
-        padded_inf_fun = pad_or_crop(self.inf_fun, Nsurf_padded)
-
-        self.inf_cube = xp.zeros((self.Nacts, Nsurf_padded, Nsurf_padded))
-        act_inds = xp.argwhere(self.mask)
-
-        for i in range(self.Nacts):
-            Nx = int(xp.round((act_inds[i][1] + 1/2 - self.Nact/2) * self.inf_sampling))
-            Ny = int(xp.round((act_inds[i][0] + 1/2 - self.Nact/2) * self.inf_sampling))
-            shifted_inf_fun = _scipy.ndimage.shift(padded_inf_fun, (Ny,Nx))
-            self.inf_cube[i] = shifted_inf_fun
-        
-        return
-        
     def get_surface(self, pixelscale=None):
-        surf = self.inf_matrix.dot(self.actuators).reshape(self.inf_cube.shape[1], self.inf_cube.shape[1])
-        
-        if pixelscale is None:
+        if self.inf_fun is not None:
+            '''
+            Use Scott Will's MFT DM implementation, 
+            see "Wavefront control with algorithmic differentiation on the HiCAT testbed" Appendix B
+            '''
+            
+            if pixelscale is None:
+                inf_sampling = self.inf_sampling
+                inf_fun = self.inf_fun
+            else: # interpolate the influence function to the desired pixelscale
+                scale = pixelscale.to_value(u.m/u.pix)/self.inf_pixelscale.to_value(u.m/u.pix)
+                inf_sampling = self.inf_sampling / scale
+                inf_fun = interp_arr(self.inf_fun, self.inf_pixelscale.to_value(u.m/u.pix), pixelscale.to_value(u.m/u.pix), order=3)
+                # inf_fun = interp_arr(self.inf_fun, scale)
+
+            xc = inf_sampling*(xp.linspace(-self.Nact//2, self.Nact//2-1, self.Nact) + 1/2)
+            yc = inf_sampling*(xp.linspace(-self.Nact//2, self.Nact//2-1, self.Nact) + 1/2)
+
+            oversample = 2
+            Nsurf = int(inf_sampling*self.Nact*oversample)
+
+            fx = xp.fft.fftfreq(Nsurf)
+            fy = xp.fft.fftfreq(Nsurf)
+
+            Mx = xp.exp(-1j*2*np.pi*xp.outer(fx,xc))
+            My = xp.exp(-1j*2*np.pi*xp.outer(yc,fy))
+
+            mft_command = Mx@self.command@My
+
+            fourier_inf_fun = xp.fft.fft2(utils.pad_or_crop(inf_fun, Nsurf))
+            fourier_surf = fourier_inf_fun * mft_command
+            
+            surf = xp.fft.ifft2(fourier_surf).real
+            surf = pad_or_crop(surf, Nsurf//2 + inf_sampling)
+
             return surf
-        else:
-            surf = interp_arr(surf, self.inf_pixelscale.to_value(u.m/u.pix), pixelscale.to_value(u.m/u.pix), order=3)
-            return surf
+
+        elif self.inf_matrix is not None:
+            surf = self.inf_matrix.dot(self.actuators).reshape(self.inf_cube.shape[1], self.inf_cube.shape[1])
+
+            if pixelscale is None:
+                return surf
+            else:
+                surf = utils.interp_arr(surf, self.inf_pixelscale.to_value(u.m/u.pix), pixelscale.to_value(u.m/u.pix), order=3)
+                return surf
     
     # METHODS TO BE COMPATABLE WITH POPPY
+    def get_opd(self, wave):
+        
+        opd = self.get_surface(pixelscale=wave.pixelscale)
+
+        opd = utils.pad_or_crop(opd, wave.shape[0])
+
+        if self.include_reflection:
+            opd *= 2
+
+        return opd
+
+    def get_transmission(self, wave):
+        
+        if self.aperture is None:
+            trans = poppy.SquareAperture(size=self.pupil_diam).get_transmission(wave)
+        else:
+            trans = self.aperture.get_transmission(wave)
+            
+        return trans
+    
     def get_phasor(self, wave):
         """
         Compute the amplitude transmission appropriate for a vortex for
@@ -196,22 +221,161 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
 
         return dm_phasor
 
-    def get_opd(self, wave):
 
-        opd = self.get_surface(pixelscale=wave.pixelscale)
-
-        opd = pad_or_crop(opd, wave.shape[0])
-
-        return opd
-
-    def get_transmission(self, wave):
+# class DeformableMirror(poppy.AnalyticOpticalElement):
+    
+#     def __init__(self, 
+#                  Nact=34,
+#                  act_spacing=300e-6*u.m,
+#                  pupil_diam=11.1*u.mm,
+#                  aperture=None,
+#                  full_stroke=1.5e-6*u.m,
+#                  inf_fun=None,
+#                  inf_cube=None,
+#                  inf_sampling=None,
+#                 ):
         
-        if self.aperture is None:
-            trans = poppy.SquareAperture(size=self.pupil_diam).get_transmission(wave)
-        else:
-            trans = self.aperture.get_transmission(wave)
+#         self.Nact = Nact
+#         self.act_spacing = act_spacing
+#         self.active_diam = self.Nact * self.act_spacing
+#         self.pupil_diam = pupil_diam
+#         self.aperture = aperture
+#         self.full_stroke = full_stroke
+        
+#         self.mask = xp.ones((self.Nact,self.Nact), dtype=bool)
+#         xx = (xp.linspace(0, self.Nact-1, self.Nact) - self.Nact/2 + 1/2) * 2*self.act_spacing.to_value(u.m)
+#         x,y = xp.meshgrid(xx,xx)
+#         r = xp.sqrt(x**2 + y**2)
+#         self.dm_grid = xp.array([x,y])
+#         self.mask[r>(self.active_diam + self.act_spacing).to_value(u.m)] = 0
+#         self.Nacts = int(xp.sum(self.mask))
+        
+#         self.zernikes = poppy.zernike.arbitrary_basis(self.mask, nterms=15, outside=0)
+
+#         self.command = xp.zeros((self.Nact, self.Nact))
+#         self.actuators = xp.zeros(self.Nacts)
             
-        return trans
+#         if isinstance(inf_cube, str): 
+#             print(f'Obtaining influence function data cube from {inf_cube}.')   
+#             self.inf_sampling = fits.getheader(inf_cube)['SAMPLING']
+#             self.inf_cube = xp.array(fits.getdata(inf_cube))
+#         elif isinstance(inf_cube, np.ndarray) or isinstance(inf_cube, xp.ndarray):
+#             print('Using user provided influence function data cube.')
+#             if inf_sampling is None:
+#                 raise ValueError('Must supply influence function sampling if providing a numerical array')
+#             self.inf_cube = xp.array(inf_cube)
+#             self.inf_sampling = inf_sampling
+#         elif inf_cube is None:
+#             if inf_fun is None:
+#                 print('Using default influence function from inf.fits.')
+#                 inf_fpath = str(Path(escpsf_dir)/'inf.fits')
+#                 self.inf_fun = xp.array(fits.getdata(inf_fpath))
+#                 self.inf_sampling = fits.getheader(inf_fpath)['SAMPLING']
+#             elif isinstance(inf_fun, str):
+#                 print(f'Obtaining influence function from {inf_fun}.')   
+#                 self.inf_fun = xp.array(fits.getdata(inf_fun))
+#                 self.inf_sampling = fits.getheader(inf_fun)['SAMPLING']
+#             elif isinstance(inf_fun, xp.ndarray):
+#                 print('Using user provided influence function data cube.')
+#                 if inf_sampling is None:
+#                     raise ValueError('Must supply influence function sampling if providing a numerical array')
+#                 self.inf_fun = inf_fun
+#                 self.inf_sampling = inf_sampling
+#             self.build_inf_cube()
+#         self.inf_matrix = self.inf_cube.reshape(self.Nacts, self.inf_cube.shape[1]**2,).T
+        
+#         self.inf_pixelscale = self.act_spacing/(self.inf_sampling*u.pix)
+
+#         self.planetype = poppy.poppy_core.PlaneType.intermediate
+#         self.name = 'DM'
+        
+#     @property
+#     def command(self):
+#         return self._command
+
+#     @command.setter
+#     def command(self, command_values):
+#         command_values *= self.mask
+#         self._actuators = self.map_command_to_actuators(command_values) # ensure you update the actuators if command is set
+#         self._command = command_values
+    
+#     @property
+#     def actuators(self):
+#         return self._actuators
+
+#     @actuators.setter
+#     def actuators(self, act_vector):
+#         self._command = self.map_actuators_to_command(act_vector) # ensure you update the actuators if command is set
+#         self._actuators = act_vector
+    
+#     def map_command_to_actuators(self, command_values):
+#         actuators = command_values[self.mask]
+#         return actuators
+        
+#     def map_actuators_to_command(self, act_vector):
+#         command = xp.zeros((self.Nact, self.Nact))
+#         command[self.mask] = act_vector
+#         return command
+    
+#     def build_inf_cube(self, overpad=None):
+        
+#         Nsurf = int(self.inf_sampling * self.Nact)
+#         if overpad is None:
+#             overpad = round(self.inf_sampling)
+        
+#         Nsurf_padded = Nsurf + overpad
+        
+#         padded_inf_fun = pad_or_crop(self.inf_fun, Nsurf_padded)
+
+#         self.inf_cube = xp.zeros((self.Nacts, Nsurf_padded, Nsurf_padded))
+#         act_inds = xp.argwhere(self.mask)
+
+#         for i in range(self.Nacts):
+#             Nx = int(xp.round((act_inds[i][1] + 1/2 - self.Nact/2) * self.inf_sampling))
+#             Ny = int(xp.round((act_inds[i][0] + 1/2 - self.Nact/2) * self.inf_sampling))
+#             shifted_inf_fun = _scipy.ndimage.shift(padded_inf_fun, (Ny,Nx))
+#             self.inf_cube[i] = shifted_inf_fun
+        
+#         return
+        
+#     def get_surface(self, pixelscale=None):
+#         surf = self.inf_matrix.dot(self.actuators).reshape(self.inf_cube.shape[1], self.inf_cube.shape[1])
+        
+#         if pixelscale is None:
+#             return surf
+#         else:
+#             surf = interp_arr(surf, self.inf_pixelscale.to_value(u.m/u.pix), pixelscale.to_value(u.m/u.pix), order=3)
+#             return surf
+    
+#     # METHODS TO BE COMPATABLE WITH POPPY
+#     def get_phasor(self, wave):
+#         """
+#         Compute the amplitude transmission appropriate for a vortex for
+#         some given pixel spacing corresponding to the supplied Wavefront
+#         """
+
+#         assert (wave.planetype != poppy.poppy_core.PlaneType.image)
+
+#         dm_phasor = self.get_transmission(wave) * xp.exp(1j * 2*np.pi/wave.wavelength.to_value(u.m) * self.get_opd(wave))
+
+#         return dm_phasor
+
+#     def get_opd(self, wave):
+
+#         opd = self.get_surface(pixelscale=wave.pixelscale)
+
+#         opd = pad_or_crop(opd, wave.shape[0])
+
+#         return opd
+
+#     def get_transmission(self, wave):
+        
+#         if self.aperture is None:
+#             trans = poppy.SquareAperture(size=self.pupil_diam).get_transmission(wave)
+#         else:
+#             trans = self.aperture.get_transmission(wave)
+            
+#         return trans
         
 
 

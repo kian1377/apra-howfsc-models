@@ -161,6 +161,26 @@ def centroid(arr, rounded=False):
     yc = round(weighted_sum_y/total_sum_y) if rounded else weighted_sum_y/total_sum_y
     return (yc, xc)
 
-    
+
+import socket
+
+def send(data, host, port):
+    # # Create a 5x10 NumPy array for demonstration
+    # data = np.random.rand(5, 10)
+
+    # Create a socket and connect to the receiver
+    # host = '18.18.33.51'
+    # port = 12345
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((host, port))
+
+    # Serialize the NumPy array as a binary string
+    data_bytes = data.tobytes()
+
+    # Send the data to the receiver
+    s.send(data_bytes)
+
+    # Close the socket
+    s.close()
     
     

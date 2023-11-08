@@ -55,7 +55,7 @@ def make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=25, coupling=0.15,
         inf_hdu = fits.PrimaryHDU(data=inf, header=hdr)
         inf_hdu.writeto(str(save_fits), overwrite=True)
 
-    return inf, sampling
+    return xp.array(inf), sampling
 
 class DeformableMirror(poppy.AnalyticOpticalElement):
     
@@ -154,7 +154,7 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
             else: # interpolate the influence function to the desired pixelscale
                 scale = pixelscale.to_value(u.m/u.pix)/self.inf_pixelscale.to_value(u.m/u.pix)
                 inf_sampling = self.inf_sampling / scale
-                inf_fun = interp_arr(self.inf_fun, self.inf_pixelscale.to_value(u.m/u.pix), pixelscale.to_value(u.m/u.pix), order=3)
+                inf_fun = utils.interp_arr(self.inf_fun, self.inf_pixelscale.to_value(u.m/u.pix), pixelscale.to_value(u.m/u.pix), order=3)
                 # inf_fun = interp_arr(self.inf_fun, scale)
 
             xc = inf_sampling*(xp.linspace(-self.Nact//2, self.Nact//2-1, self.Nact) + 1/2)
@@ -175,7 +175,7 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
             fourier_surf = fourier_inf_fun * mft_command
             
             surf = xp.fft.ifft2(fourier_surf).real
-            surf = pad_or_crop(surf, Nsurf//2 + inf_sampling)
+            surf = utils.pad_or_crop(surf, Nsurf//2 + inf_sampling)
 
             return surf
 

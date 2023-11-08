@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 import copy
 
+import poppy
+
 class CORO():
 
     def __init__(self, 
@@ -71,6 +73,47 @@ class CORO():
     def getattr(self, attr):
         return getattr(self, attr)
 
+    # def init_dm(self):
+    #     self.DM = dm.DeformableMirror()
+
+    #     self.Nact = self.DM.Nact
+    #     self.Nacts = self.DM.Nacts
+    #     self.act_spacing = self.DM.act_spacing
+    #     self.dm_active_diam = self.DM.active_diam
+    #     self.dm_full_diam = self.DM.pupil_diam
+        
+    #     self.full_stroke = self.DM.full_stroke
+        
+    #     self.dm_mask = self.DM.dm_mask
+
+    # def zero_dm(self):
+    #     self.set_dm(xp.zeros((self.Nact,self.Nact)))
+    
+    # def reset_dm(self):
+    #     self.set_dm(self.dm_ref)
+    
+    # def set_dm(self, command):
+    #     if command.shape[0]==self.Nacts:
+    #         dm_command = self.DM.map_actuators_to_command(xp.asarray(command))
+    #     else: 
+    #         dm_command = xp.asarray(command)
+    #     self.DM.command = dm_command
+        
+    # def add_dm(self, command):
+    #     if command.shape[0]==self.Nacts:
+    #         dm_command = self.DM.map_actuators_to_command(xp.asarray(command))
+    #     else: 
+    #         dm_command = xp.asarray(command)
+    #     self.DM.command += dm_command
+        
+    # def get_dm(self):
+    #     return self.DM.command
+    
+    # def get_dm_surface(self):
+    #     dm_pixelscale = self.dm_fill_factor * self.dm_active_diam/(self.npix*u.pix)
+    #     dm_surf = self.DM.get_surface(pixelscale=dm_pixelscale)
+    #     return dm_surf
+    
     def init_dm(self):
         self.Nact = 34
         self.Nacts = 952
@@ -91,8 +134,9 @@ class CORO():
         self.DM = poppy.ContinuousDeformableMirror(dm_shape=(self.Nact,self.Nact), name='DM', 
                                                    actuator_spacing=self.act_spacing, 
                                                    influence_func=self.dm_inf,
-                                                   include_factor_of_2=True, 
+                                                   include_factor_of_two=True, 
                                                   )
+
         
     def reset_dm(self):
         self.set_dm(self.dm_ref)

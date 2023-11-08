@@ -13,6 +13,8 @@ pupil = PlaneType.pupil
 inter = PlaneType.intermediate
 image = PlaneType.image
 
+import os
+print(os.path.dirname(__file__))
     
 class CORO():
 
@@ -51,7 +53,7 @@ class CORO():
             self.psf_pixelscale_lamD = psf_pixelscale_lamD
             self.psf_pixelscale = 4.5518207e-6*u.m/u.pix * self.psf_pixelscale_lamD/(1/4)
         
-        self.dm_inf = 'inf.fits' if dm_inf is None else dm_inf
+        self.dm_inf = os.path.dirname(__file__)+'/inf.fits' if dm_inf is None else dm_inf
         
         self.wf_norm = 'none'
         self.im_norm = im_norm

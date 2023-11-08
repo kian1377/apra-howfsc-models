@@ -50,7 +50,7 @@ class CORO():
         self.as_per_lamD = ((self.wavelength_c/self.pupil_diam)*u.radian).to(u.arcsec)
         self.psf_pixelscale_as = self.psf_pixelscale_lamD * self.as_per_lamD * self.oversample
         
-        self.dm_inf = 'inf.fits' if dm_inf is None else dm_inf
+        self.dm_inf = os.path.dirname(__file__)+'/inf.fits' if dm_inf is None else dm_inf
         
         self.wf_norm = wf_norm
         self.im_norm = 1

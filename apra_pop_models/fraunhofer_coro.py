@@ -373,8 +373,6 @@ def process_pr_data(pr_amp, pr_phs, npup, pr_rotation,
 
     wfe = pr_amp*xp.exp(1j*pr_phs)
 
-
-
     if N is not None:
         utils.pad_or_crop(wfe, N)
 

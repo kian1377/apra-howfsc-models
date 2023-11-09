@@ -38,7 +38,7 @@ class CORO():
                  LYOT=None):
         
         self.wavelength_c = 650e-9*u.m
-        self.pupil_diam = 10.0*u.mm
+        self.pupil_diam = 10.2*u.mm
         
         self.wavelength = self.wavelength_c if wavelength is None else wavelength
         
@@ -129,10 +129,10 @@ class CORO():
         self.DM.set_surface(ensure_np_array(dm_command))
         
     def add_dm(self, dm_command):
-        self.DM.set_surface(self.get_dm() + ensure_np_array(dm_command))
+        self.DM.set_surface(ensure_np_array(self.get_dm()) + ensure_np_array(dm_command))
         
     def get_dm(self):
-        return ensure_np_array(self.DM.surface)
+        return self.DM.surface
     
     def map_actuators_to_command(self, act_vector):
         command = np.zeros((self.Nact, self.Nact))

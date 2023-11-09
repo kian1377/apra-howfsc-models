@@ -19,7 +19,7 @@ class CORO():
                  npix=256, 
                  oversample=16,
                  npsf=100,
-                 psf_pixelscale=5e-6*u.m/u.pix,
+                 psf_pixelscale=4.5518207e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
                  detector_rotation=0, 
                  dm_ref=np.zeros((34,34)),
@@ -42,10 +42,10 @@ class CORO():
         self.npsf = npsf
         if psf_pixelscale_lamD is None: # overrides psf_pixelscale this way
             self.psf_pixelscale = psf_pixelscale
-            self.psf_pixelscale_lamD = (1/3.6) * self.psf_pixelscale.to(u.m/u.pix).value/5e-6
+            self.psf_pixelscale_lamD = (1/4) * self.psf_pixelscale.to(u.m/u.pix).value/(4.5518207e-6)
         else:
             self.psf_pixelscale_lamD = psf_pixelscale_lamD
-            self.psf_pixelscale = 5e-6*u.m/u.pix / self.psf_pixelscale_lamD/(1/4.2)
+            self.psf_pixelscale = 4.5518207e-6*u.m/u.pix * self.psf_pixelscale_lamD/(1/4)
         
         self.as_per_lamD = ((self.wavelength_c/self.pupil_diam)*u.radian).to(u.arcsec)
         self.psf_pixelscale_as = self.psf_pixelscale_lamD * self.as_per_lamD * self.oversample
@@ -63,6 +63,8 @@ class CORO():
         self.dm_ref = dm_ref
         self.init_dm()
         
+        self.reverse_parity = False
+
         self.det_rotation = detector_rotation
         
         self.pupil_apodizer_ratio = 1 
@@ -148,10 +150,10 @@ class CORO():
         self.DM.set_surface(ensure_np_array(dm_command))
         
     def add_dm(self, dm_command):
-        self.DM.set_surface(self.get_dm() + ensure_np_array(dm_command))
+        self.DM.set_surface(ensure_np_array(self.get_dm()) + ensure_np_array(dm_command))
         
     def get_dm(self):
-        return ensure_np_array(self.DM.surface)
+        return self.DM.surface
     
     def map_actuators_to_command(self, act_vector):
         command = np.zeros((self.Nact, self.Nact))
@@ -202,14 +204,18 @@ class CORO():
         self.init_inwave()
         _, wf = self.osys.calc_psf(inwave=self.inwave, normalize=self.wf_norm, return_final=True, return_intermediates=False)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        return wf[0].wavefront/np.sqrt(self.im_norm)
+
+        fpwf = wf[0].wavefront
+
+        if self.reverse_parity:
+            fpwf = xp.rot90(xp.rot90(fpwf))
+
+        return fpwf/np.sqrt(self.im_norm)
     
     def snap(self): # method for getting the PSF in photons
-        self.init_osys()
-        self.init_inwave()
-        _, wf = self.osys.calc_psf(inwave=self.inwave, normalize=self.wf_norm, return_intermediates=False, return_final=True)
-        image = wf[0].intensity
-        image /= self.im_norm
+        
+        image = xp.abs(self.calc_psf())**2
+
         return image
     
 

@@ -35,6 +35,8 @@ notebooks/serial_test.npy
 notebooks/test_dm_model.ipynb
 notebooks/test_fpm_mft.ipynb
 notebooks/test_ote_model.ipynb
+notebooks/test_poppy_fraunhofer_model.ipynb
+notebooks/test_poppy_fresnel_model.ipynb
 papers/Gong-optical_design_of_the_extreme_coronagraph.pdf
 papers/Lightsey-jwst_prescription.pdf
 papers/Parramon-modeling_luvoir_coro.pdf

@@ -9,10 +9,6 @@ import time
 import copy
 from IPython.display import display, clear_output
 
-import sys
-sys.path.insert(len(sys.path), '/home/kianmilani/Projects/P5040_test_software/EFC')
-import efc_host_utils
-
 def calibrate(sysi, 
               calibration_modes, calibration_amp,
               control_mask, 
@@ -146,11 +142,6 @@ def run(sysi,
     print('Beginning closed-loop EFC.')    
     start = time.time()
     
-    # U, s, V = xp.linalg.svd(jac, full_matrices=False)
-    # alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
-    # print('Max singular value squared:\t', s.max()**2)
-    # print('alpha^2:\t\t\t', alpha2) 
-    
     calibration_modes = xp.array(calibration_modes)
 
     Nact = sysi.Nact
@@ -214,9 +205,6 @@ def run(sysi,
                             cmap1='viridis',
                             lognorm2=True, vmin2=1e-11, pxscl2=sysi.psf_pixelscale_lamD, xlabel2='$\lambda/D$')
 
-            if plot_sms:
-                sms_fig = sms(U, s, alpha2, efield_ri, Nmask, i)
-
             if plot_radial_contrast:
                 utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
             
@@ -239,7 +227,12 @@ def run(sysi,
 
 import matplotlib.pyplot as plt
 
-def sms(U, s, alpha2, electric_field, N_DH, itr): 
+def plot_sms(jac, alpha2, electric_field, N_DH, itr): 
+    U, s, V = xp.linalg.svd(jac, full_matrices=False)
+    alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
+    print('Max singular value squared:\t', s.max()**2)
+    print('alpha^2:\t\t\t', alpha2) 
+
     # electric_field: the electric field acquired by estimation or from the model
     Imax_unocc = 1 # assuming that all the images are already normalized
 
@@ -270,3 +263,4 @@ def sms(U, s, alpha2, electric_field, N_DH, itr):
     display(fig)
     
     return fig
+

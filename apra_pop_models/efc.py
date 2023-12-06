@@ -1,5 +1,6 @@
 from .math_module import xp
-from . import utils, scc
+from . import efc_utils
+from . import utils
 from . import imshows
 
 import numpy as np
@@ -7,6 +8,10 @@ import astropy.units as u
 import time
 import copy
 from IPython.display import display, clear_output
+
+import sys
+sys.path.insert(len(sys.path), '/home/kianmilani/Projects/P5040_test_software/EFC')
+import efc_host_utils
 
 def calibrate(sysi, 
               calibration_modes, calibration_amp,

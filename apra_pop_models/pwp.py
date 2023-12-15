@@ -102,8 +102,10 @@ def run_pwp_bp(sysi,
     for i in range(Nmask):
         delI = I_diff[:, i]
         M = 4*xp.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
+        # print(M.shape)
         Minv = xp.linalg.pinv(M.T@M, 1e-2)@M.T
-    
+
+        # Trying to solve the system of delI = M @ E_est
         est = Minv.dot(delI)
 
         E_est[i] = est[0] + 1j*est[1]
@@ -123,7 +125,7 @@ def run_pwp_redmond(sysi, control_mask,
                 rcond=1e-15,
                 plot=False,
                 plot_est=False):
-    nmask = dark_mask.sum()
+    nmask = control_mask.sum()
     nprobes = probes.shape[0]
     
     amps = np.linspace(-1, 1, 2) # for generating a negative and positive probe

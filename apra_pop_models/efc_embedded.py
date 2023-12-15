@@ -10,7 +10,8 @@ import copy
 from IPython.display import display, clear_output
 
 import sys
-sys.path.insert(len(sys.path), 'home/apra/Projects/P5040/P5040_test_software/EFC/python_host')
+# sys.path.insert(len(sys.path), 'home/apra/Projects/P5040/P5040_test_software/EFC/python_host')
+sys.path.insert(len(sys.path), '/home/apra/Projects/P5040/P5040_test_software/EFC/python_host')
 import efc_host_utils
 
 def calibrate(sysi, 
@@ -181,7 +182,6 @@ def run(sysi,
     else:
         starting_iteration = len(old_images) - 1
 
-    vector_sender = efc_host_utils.MatrixSender()
     for i in range(iterations):
         print(f'\tRunning iteration {i+1+starting_iteration}/{iterations+starting_iteration}.')
         
@@ -197,7 +197,7 @@ def run(sysi,
         efield_ri[::2] = electric_field[control_mask].real
         efield_ri[1::2] = electric_field[control_mask].imag
 
-        modal_coefficients = embedded_controller.do_EFC(efield_ri)
+        modal_coefficients = -embedded_controller.do_EFC(efield_ri)
         command = (1.0-leakage)*command + loop_gain*xp.array(modal_coefficients)
         
         # Reconstruct the full phase from the Fourier modes

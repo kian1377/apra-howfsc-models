@@ -1,4 +1,4 @@
-from .math_module import xp
+from .math_module import xp, ensure_np_array
 from . import efc_utils
 from . import utils
 from . import imshows
@@ -10,7 +10,7 @@ import copy
 from IPython.display import display, clear_output
 
 import sys
-sys.path.insert(len(sys.path), 'home/apra/Projects/P5040/P5040_test_software/EFC')
+sys.path.insert(len(sys.path), 'home/apra/Projects/P5040/P5040_test_software/EFC/python_host')
 import efc_host_utils
 
 def calibrate(sysi, 
@@ -53,7 +53,7 @@ def calibrate(sysi,
 
             if scc_fun is None: # using the model to build the Jacobian
                 sysi.add_dm(amp*mode)
-                wavefront = sysi.calc_psf()
+                wavefront = sysi.calc_wf()
                 response += amp * wavefront.flatten() / (2*np.var(amps))
                 sysi.add_dm(-amp*mode)
             elif scc_fun is not None and scc_params is not None:
@@ -89,6 +89,7 @@ def prepare_efc(jacobian, control_matrix):
 
 def run(sysi, 
         calibration_modes,
+        control_matrix,
         control_mask, 
         est_fun=None,
         est_params=None,
@@ -162,7 +163,10 @@ def run(sysi,
 
     Nact = sysi.Nact
     Nmask = int(control_mask.sum())
-    
+
+    embedded_controller = efc_host_utils.EmbeddedController()
+    embedded_controller.send_command_matrix(ensure_np_array(control_matrix))
+
     # The metrics
     metric_images = []
     fields = []
@@ -193,10 +197,8 @@ def run(sysi,
         efield_ri[::2] = electric_field[control_mask].real
         efield_ri[1::2] = electric_field[control_mask].imag
 
-        vector_sender.send_contents(efield_ri)
-
-        modal_coefficients = receive_vector()
-        command = (1.0-leakage)*command + loop_gain*modal_coefficients
+        modal_coefficients = embedded_controller.do_EFC(efield_ri)
+        command = (1.0-leakage)*command + loop_gain*xp.array(modal_coefficients)
         
         # Reconstruct the full phase from the Fourier modes
         act_commands = calibration_modes.T.dot(command)
@@ -239,7 +241,9 @@ def run(sysi,
         fields = xp.concatenate([old_fields, fields], axis=0)
     if old_commands is not None: 
         dm_commands = xp.concatenate([old_commands, dm_commands], axis=0)
-                
+
+    embedded_controller.stop()
+
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
     return metric_images, fields, dm_commands

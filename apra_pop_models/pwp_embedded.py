@@ -11,15 +11,21 @@ from IPython.display import clear_output
 import time
 import copy
 
+import sys
+sys.path.insert(len(sys.path), 'home/apra/Projects/P5040/P5040_test_software/EFC/python_host')
+import efc_host_utils
+
 def run_pwp_bp(sysi, 
                control_mask, 
                probes,
-               use='J', jacobian=None, model=None, 
+               jacobian,
+               embedded_controller,
                plot=False,
                plot_est=False):
     """ 
     This method of PWP will use the supplied probe commands to estimate the electric field
-    within the pixels specified by the boolean control mask. 
+    within the pixels specified by the boolean control mask. This implementation requires a 
+    Jacobian to compute the E-field of the DM probes. 
 
     Parameters
     ----------
@@ -29,12 +35,8 @@ def run_pwp_bp(sysi,
         boolean array of focal plane pixels to be estimated
     probes : np.ndarray
         3D array of probes to be used for estimation
-    use : str, optional
-        whether to use a jacobian or the direct model to perform estimation, by default 'J'
-    jacobian : xp.ndarray, optional
+    jacobian : xp.ndarray
         the Jacobian to use if use='J', by default None
-    model : object, optional
-        the model to use, by default None
     plot : bool, optional
         plot all stages of the estimation algorithm, by default False
     plot_est : bool, optional
@@ -51,6 +53,9 @@ def run_pwp_bp(sysi,
     
     Ip = []
     In = []
+
+    embedded_controller.send_jacobian(jacobian)
+
     for i,probe in enumerate(probes):
         for amp in amps:
             sysi.add_dm(amp*probe)
@@ -70,28 +75,12 @@ def run_pwp_bp(sysi,
     E_probes = xp.zeros((probes.shape[0], 2*Nmask))
     I_diff = xp.zeros((probes.shape[0], Nmask))
     for i in range(len(probes)):
-        if (use=='jacobian' or use.lower()=='j') and jacobian is not None:
-            probe = xp.array(probes[i])
-            vector_sender.send_contents(probe[sysi.dm_mask.astype(bool)])
-            # E_probe = jacobian.dot(xp.array(probe[sysi.dm_mask.astype(bool)]))
-            E_probe = receive_vector()
-            E_probe = E_probe[::2] + 1j*E_probe[1::2]
-        elif (use=='model' or use=='m') and model is not None:
-            if i==0: 
-                E_full = model.calc_psf()[control_mask]
-                
-            model.add_dm(probes[i])
-            E_full_probe = model.calc_psf()[control_mask]
-            model.add_dm(-probes[i])
-            
-            E_probe = E_full_probe - E_full
-            # print(type(E_probe))
+        probe = xp.array(probes[i])
+        E_probe = embedded_controller.do_pwp(probe[sysi.dm_mask.astype(bool)])
+        E_probe = E_probe[::2] + 1j*E_probe[1::2]
             
         if plot:
             E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=xp.complex128)
-            # print(xp)
-            # print(type(E_probe_2d), type(dark_mask))
-            xp.place(E_probe_2d, mask=control_mask, vals=E_probe)
             imshows.imshow2(xp.abs(E_probe_2d), xp.angle(E_probe_2d),
                             f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$')
             

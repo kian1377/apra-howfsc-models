@@ -233,7 +233,7 @@ class SCOOB():
         dm_surf = self.get_dm_surface()
         if include_reflection:
             dm_surf *= 2
-        dm_surf = scoobpsf.utils.pad_or_crop(dm_surf, self.N)
+        dm_surf = utils.pad_or_crop(dm_surf, self.N)
         wavefront *= xp.exp(1j*2*np.pi/self.wavelength.to_value(u.m) * dm_surf)
         return wavefront
     

@@ -88,7 +88,7 @@ def prepare_efc(jacobian, control_matrix):
     efc_host_utils.send_matrix(control_matrix)
 
 
-def run(sysi, 
+def run(sysi, embedded_controller,
         calibration_modes,
         control_matrix,
         control_mask, 
@@ -166,9 +166,6 @@ def run(sysi,
     Nact = sysi.Nact
     Nmask = int(control_mask.sum())
 
-    embedded_controller = efc_host_utils.EmbeddedController()
-    embedded_controller.send_command_matrix(ensure_np_array(control_matrix))
-
     # The metrics
     metric_images = []
     fields = []
@@ -182,6 +179,8 @@ def run(sysi,
         starting_iteration = 0
     else:
         starting_iteration = len(old_images) - 1
+
+    # embedded_controller.send_command_matrix(ensure_np_array(control_matrix))
 
     for i in range(iterations):
         print(f'\tRunning iteration {i+1+starting_iteration}/{iterations+starting_iteration}.')

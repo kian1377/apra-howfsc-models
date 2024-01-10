@@ -54,7 +54,7 @@ def run_pwp_bp(sysi,
     Ip = []
     In = []
 
-    embedded_controller.send_jacobian(jacobian)
+    # embedded_controller.send_jacobian(jacobian)
 
     for i,probe in enumerate(probes):
         for amp in amps:
@@ -71,16 +71,16 @@ def run_pwp_bp(sysi,
         if plot:
             imshows.imshow3(Ip[i], In[i], Ip[i]-In[i], lognorm1=True, lognorm2=True, pxscl=sysi.psf_pixelscale_lamD)
     
-    vector_sender = efc_host_utils.MatrixSender()
     E_probes = xp.zeros((probes.shape[0], 2*Nmask))
     I_diff = xp.zeros((probes.shape[0], Nmask))
     for i in range(len(probes)):
         probe = xp.array(probes[i])
-        E_probe = embedded_controller.do_pwp(probe[sysi.dm_mask.astype(bool)])
+        E_probe = embedded_controller.do_PWP(probe[sysi.dm_mask.astype(bool)])
         E_probe = E_probe[::2] + 1j*E_probe[1::2]
             
         if plot:
             E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=xp.complex128)
+            E_probe_2d.ravel()[control_mask.ravel()]  = E_probe
             imshows.imshow2(xp.abs(E_probe_2d), xp.angle(E_probe_2d),
                             f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$')
             

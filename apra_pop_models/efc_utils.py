@@ -61,39 +61,6 @@ def interp_arr(arr, pixelscale, new_pixelscale, order=1):
         interped_arr = _scipy.ndimage.map_coordinates(arr, coords, order=order)
         return interped_arr
 
-def generate_wfe(diam, wavelength=500*u.nm,
-                 opd_index=2.5, amp_index=2, 
-                 opd_seed=1234, amp_seed=12345,
-                 opd_rms=10*u.nm, amp_rms=0.05,
-                 npix=256, oversample=4,  
-                 plot=False):
-    
-    amp_rms *= u.nm
-    wf = poppy.FresnelWavefront(beam_radius=diam/2, npix=npix, oversample=oversample, wavelength=wavelength)
-    wfe_opd = poppy.StatisticalPSDWFE(index=opd_index, wfe=opd_rms, radius=diam/2, seed=opd_seed).get_opd(wf)
-    wfe_amp = poppy.StatisticalPSDWFE(index=amp_index, wfe=amp_rms, radius=diam/2, seed=amp_seed).get_opd(wf)
-    wfe_amp /= amp_rms.unit.to(u.m)
-    amp_rms = amp_rms.to_value(u.nm)
-    mask = poppy.CircularAperture(radius=diam/2).get_transmission(wf)>0
-    Zs = poppy.zernike.arbitrary_basis(mask, nterms=3, outside=0)
-    
-    Zc_amp = lstsq(Zs, wfe_amp)
-    Zc_opd = lstsq(Zs, wfe_opd)
-    for i in range(3):
-        wfe_amp -= Zc_amp[i] * Zs[i]
-        wfe_opd -= Zc_opd[i] * Zs[i]
-    wfe_amp += 1
-
-    wfe = wfe_amp * xp.exp(1j*2*np.pi/wavelength.to_value(u.m) * wfe_opd)
-    wfe *= poppy.CircularAperture(radius=diam/2).get_transmission(wf)
-    
-    if plot:
-        imshows.imshow2(xp.abs(wfe), xp.angle(wfe)*wavelength.to_value(u.m)/(2*np.pi),
-                        npix=npix,
-                        vmin1=1-3*amp_rms, vmax1=1+3*amp_rms)
-
-    return wfe
-
 def lstsq(modes, data):
     """Least-Squares fit of modes to data.
 
@@ -150,19 +117,6 @@ def beta_reg(S, beta=-1):
     control_matrix = xp.matmul( xp.linalg.inv( sts + alpha2*10.0**(beta)*xp.eye(sts.shape[0]) ), S.T)
     return control_matrix
 
-def create_circ_mask(h, w, center=None, radius=None):
-
-    if center is None: # use the middle of the image
-        center = (int(w//2), int(h//2))
-    if radius is None: # use the smallest distance between the center and image walls
-        radius = min(center[0], center[1], w-center[0], h-center[1])
-        
-    Y, X = xp.ogrid[:h, :w]
-    dist_from_center = xp.sqrt((X - center[0] + 1/2)**2 + (Y - center[1] + 1/2)**2)
-
-    mask = dist_from_center <= radius
-    return mask
-
 # Creating focal plane masks
 def create_annular_focal_plane_mask(sysi, 
                                     inner_radius, outer_radius, 
@@ -190,7 +144,6 @@ def create_box_focal_plane_mask(sysi, x0, y0, width, height):
     x0, y0, width, height = (params['x0'], params['y0'], params['w'], params['h'])
     mask = ( abs(x - x0) < width/2 ) * ( abs(y - y0) < height/2 )
     return mask > 0
-
 
 def masked_rms(image,mask=None):
     return np.sqrt(np.mean(image[mask]**2))

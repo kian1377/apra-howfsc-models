@@ -97,6 +97,7 @@ def run(sysi,
         loop_gain=0.5, 
         leakage=0.0,
         iterations=5, 
+        stop=False, 
         plot_all=False, 
         plot_current=True,
         plot_sms=False,
@@ -242,7 +243,8 @@ def run(sysi,
     if old_commands is not None: 
         dm_commands = xp.concatenate([old_commands, dm_commands], axis=0)
 
-    embedded_controller.stop()
+    if stop:
+        embedded_controller.stop()
 
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     

@@ -23,10 +23,10 @@ def imshow1(arr,
             figsize=(4,4), dpi=125, display_fig=True, return_fig=False):
     fig,ax = plt.subplots(nrows=1, ncols=1, figsize=figsize, dpi=dpi)
     
-    arr = ensure_np_array(arr)
-    
     if npix is not None:
         arr = pad_or_crop(arr, npix)
+
+    arr = ensure_np_array(arr)
     
     if pxscl is not None:
         if isinstance(pxscl, u.Quantity):
@@ -75,12 +75,12 @@ def imshow2(arr1, arr2,
             figsize=(10,4), dpi=125, wspace=0.2):
     fig,ax = plt.subplots(nrows=1, ncols=2, figsize=figsize, dpi=dpi)
     
-    arr1 = ensure_np_array(arr1)
-    arr2 = ensure_np_array(arr2)
-    
     npix1, npix2 = (npix, npix) if npix is not None else (npix1, npix2)
     if npix1 is not None: arr1 = pad_or_crop(arr1, npix1)
     if npix2 is not None: arr2 = pad_or_crop(arr2, npix2)
+
+    arr1 = ensure_np_array(arr1)
+    arr2 = ensure_np_array(arr2)
     
     pxscl1, pxscl2 = (pxscl, pxscl) if pxscl is not None else (pxscl1, pxscl2)
     if pxscl1 is not None:
@@ -170,14 +170,14 @@ def imshow3(arr1, arr2, arr3,
             figsize=(14,7), dpi=125, wspace=0.3):
     fig,ax = plt.subplots(nrows=1, ncols=3, figsize=figsize, dpi=dpi)
     
-    arr1 = ensure_np_array(arr1)
-    arr2 = ensure_np_array(arr2)
-    arr3 = ensure_np_array(arr3)
-    
     npix1, npix2, npix3 = (npix, npix, npix) if npix is not None else (npix1, npix2, npix3)
     if npix1 is not None: arr1 = pad_or_crop(arr1, npix1)
     if npix2 is not None: arr2 = pad_or_crop(arr2, npix2)
     if npix3 is not None: arr2 = pad_or_crop(arr3, npix3)
+
+    arr1 = ensure_np_array(arr1)
+    arr2 = ensure_np_array(arr2)
+    arr3 = ensure_np_array(arr3)
     
     pxscl1, pxscl2, pxscl3 = (pxscl, pxscl, pxscl) if pxscl is not None else (pxscl1, pxscl2, pxscl3)
     if pxscl1 is not None:

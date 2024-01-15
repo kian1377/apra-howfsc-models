@@ -25,7 +25,7 @@ class CORO():
                  dm_ref=np.zeros((34,34)),
                  dm_inf=None, # defaults to inf.fits
                  wf_norm='none',
-                 im_norm=1,
+                 Imax_ref=1,
                  RETRIEVED=None,
                  APODIZER=None,
                  FPM=None,
@@ -53,7 +53,7 @@ class CORO():
         self.dm_inf = os.path.dirname(__file__)+'/inf.fits' if dm_inf is None else dm_inf
         
         self.wf_norm = wf_norm
-        self.im_norm = 1
+        self.Imax_ref = 1
         
         self.APODIZER = APODIZER
         self.RETRIEVED = RETRIEVED
@@ -167,10 +167,13 @@ class CORO():
         LYOT = poppy.ScalarTransmission(name='Lyot Stop Place-holder') if self.LYOT is None else self.LYOT
         
         # define FresnelOpticalSystem and add optics
-        osys = poppy.OpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, oversample=self.oversample)
+        osys = poppy.OpticalSystem(pupil_diameter=self.dm_full_diam, npix=self.npix, oversample=self.oversample)
         
-        osys.add_pupil(poppy.CircularAperture(radius=self.pupil_diam/2))
+        osys.add_pupil(poppy.CircularAperture(radius=self.dm_full_diam/2))
         osys.add_pupil(self.DM)
+        # if self.use_dm2:
+        #     osys.add_pupil(DM2)
+        osys.add_pupil(poppy.CircularAperture(radius=self.pupil_diam/2))
         osys.add_image(poppy.ScalarTransmission('Intermediate Image Plane'))
         osys.add_pupil(RETRIEVED)
         osys.add_pupil(APODIZER)
@@ -183,7 +186,7 @@ class CORO():
         self.osys = osys
         
     def init_inwave(self):
-        inwave = poppy.Wavefront(diam=self.pupil_diam, wavelength=self.wavelength,
+        inwave = poppy.Wavefront(diam=self.dm_full_diam, wavelength=self.wavelength,
                                  npix=self.npix, oversample=self.oversample)
         self.inwave = inwave
     
@@ -194,7 +197,7 @@ class CORO():
         self.init_inwave()
         _, wfs = self.osys.calc_psf(inwave=self.inwave, normalize=self.wf_norm, return_intermediates=True)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        wfs[-1].wavefront /= np.sqrt(self.im_norm)
+        wfs[-1].wavefront /= np.sqrt(self.Imax_ref)
         return wfs
     
     def calc_psf(self, quiet=True): # method for getting the PSF in photons
@@ -210,7 +213,7 @@ class CORO():
         if self.reverse_parity:
             fpwf = xp.rot90(xp.rot90(fpwf))
 
-        return fpwf/np.sqrt(self.im_norm)
+        return fpwf/np.sqrt(self.Imax_ref)
     
     def snap(self): # method for getting the PSF in photons
         

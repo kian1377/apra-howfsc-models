@@ -86,11 +86,12 @@ def lstsq(modes, data):
     return c
 
 def generate_wfe(diam, 
+                 npix=256, oversample=4, 
+                 wavelength=500*u.nm,
                  opd_index=2.5, amp_index=2, 
                  opd_seed=1234, amp_seed=12345,
                  opd_rms=10*u.nm, amp_rms=0.05,
-                 npix=256, oversample=4, 
-                 wavelength=500*u.nm):
+                 ):
     amp_rms *= u.nm
     wf = poppy.FresnelWavefront(beam_radius=diam/2, npix=npix, oversample=oversample, wavelength=wavelength)
     wfe_opd = poppy.StatisticalPSDWFE(index=opd_index, wfe=opd_rms, radius=diam/2, seed=opd_seed).get_opd(wf)
@@ -98,11 +99,11 @@ def generate_wfe(diam,
     # print(wfe_amp)
     wfe_amp /= amp_rms.unit.to(u.m)
     
-    wfe_amp = xp.asarray(ensure_np_array(wfe_amp))
-    wfe_opd = xp.asarray(ensure_np_array(wfe_opd))
+    wfe_amp = xp.asarray(wfe_amp)
+    wfe_opd = xp.asarray(wfe_opd)
 
-    mask = ensure_np_array(poppy.CircularAperture(radius=diam/2).get_transmission(wf))>0
-    Zs = ensure_np_array(poppy.zernike.arbitrary_basis(mask, nterms=3, outside=0))
+    mask = poppy.CircularAperture(radius=diam/2).get_transmission(wf)>0
+    Zs = poppy.zernike.arbitrary_basis(mask, nterms=3, outside=0)
     
     Zc_amp = lstsq(Zs, wfe_amp)
     Zc_opd = lstsq(Zs, wfe_opd)
@@ -111,8 +112,8 @@ def generate_wfe(diam,
         wfe_opd -= Zc_opd[i] * Zs[i]
     wfe_amp += 1
 
-    wfe = wfe_amp * jnp.exp(1j*2*np.pi/wavelength.to_value(u.m) * wfe_opd)
-    wfe *= jnp.asarray(ensure_np_array(poppy.CircularAperture(radius=diam/2).get_transmission(wf)))
+    wfe = wfe_amp * xp.exp(1j*2*np.pi/wavelength.to_value(u.m) * wfe_opd)
+    wfe *= poppy.CircularAperture(radius=diam/2).get_transmission(wf)
     
     return wfe
 

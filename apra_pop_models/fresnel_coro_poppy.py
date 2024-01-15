@@ -78,10 +78,10 @@ class CORO():
         self.oap5_diam = 12.7*u.mm
         
         self.fl_oap0 = 200*u.mm
-        self.fl_oap1 = 200*u.mm
-        self.fl_oap2 = 200*u.mm
+        self.fl_oap1 = 400*u.mm
+        self.fl_oap2 = 400*u.mm
         self.fl_oap3 = 500*u.mm
-        self.fl_oap4 = 350*u.mm
+        self.fl_oap4 = 400*u.mm
         self.fl_oap5 = 200*u.mm
         
         self.det_rotation = detector_rotation

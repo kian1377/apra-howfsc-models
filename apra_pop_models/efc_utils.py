@@ -73,6 +73,59 @@ def create_box_focal_plane_mask(sysi, x0, y0, width, height):
 def masked_rms(image,mask=None):
     return np.sqrt(np.mean(image[mask]**2))
 
+def create_probe_poke_modes(Nact, 
+                            poke_indices,
+                            plot=False):
+    Nprobes = len(poke_indices)
+    probe_modes = np.zeros((Nprobes, Nact, Nact))
+    for i in range(Nprobes):
+        probe_modes[i, poke_indices[i][1], poke_indices[i][0]] = 1
+    if plot:
+        fig,ax = plt.subplots(nrows=1, ncols=Nprobes, dpi=125, figsize=(10,4))
+        for i in range(Nprobes):
+            im = ax[i].imshow(probe_modes[i], cmap='viridis')
+            divider = make_axes_locatable(ax[i])
+            cax = divider.append_axes("right", size="4%", pad=0.075)
+            fig.colorbar(im, cax=cax)
+        plt.close()
+        display(fig)
+        
+    return probe_modes
+
+def create_fourier_probes(sysi, control_mask,
+                          fourier_sampling=0.25, 
+                          shift=(0,0), 
+                          nprobes=2, 
+                          plot=False, 
+                          calc_responses=False): 
+#     make probe modes from the sum of the cos and sin fourier modes
+    fourier_modes = create_fourier_modes(sysi, control_mask, fourier_sampling=fourier_sampling, use='both')
+    nfs = fourier_modes.shape[0]//2
+    Nact = sysi.Nact
+    
+    probes = np.zeros((nprobes, sysi.Nact, sysi.Nact))
+    sum_cos = fourier_modes[:nfs].sum(axis=0).reshape(Nact,Nact)
+    sum_sin = fourier_modes[nfs:].sum(axis=0).reshape(Nact,Nact)
+    
+    # nprobes=2 will give one probe that is purely the sum of cos and another that is the sum of sin
+    cos_weights = np.linspace(1,0,nprobes)
+    sin_weights = np.linspace(0,1,nprobes)
+    
+    if not isinstance(shift, list):
+        shifts = [shift]*nprobes
+    else:
+        shifts = shift
+    for i in range(nprobes):
+        probe = cos_weights[i]*sum_cos + sin_weights[i]*sum_sin
+        probe = scipy.ndimage.shift(probe, (shifts[i][1], shifts[i][0]))
+        probes[i] = probe/np.max(probe)
+        
+        if plot: 
+            response = xp.abs(xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift( pad_or_crop(xp.array(probes[i]), 4*Nact) ))))
+            imshows.imshow2(probes[i], response, pxscl2=1/4)
+            
+    return probes
+
 def create_random_probes(rms, alpha, dm_mask, fmin=1, fmax=17, nprobes=3, 
                          plot=False,
                          calc_responses=False):
@@ -108,6 +161,17 @@ def create_random_probes(rms, alpha, dm_mask, fmin=1, fmax=17, nprobes=3,
                 
     
     return probes
+
+def create_2dm_mode_matrix(dm_modes_1, dm_modes_2=None):
+    
+    dm_modes_2 = dm_modes_1 if dm_modes_2 is None else dm_modes_2 # assumes same modes on each DM
+    
+    calib_modes_dm1 = np.concatenate([dm_modes_1, np.zeros_like(dm_modes_2)])
+    calib_modes_dm2 = np.concatenate([np.zeros_like(dm_modes_1), dm_modes_2])
+#     print(calib_modes_dm1.shape, calib_modes_dm2.shape)
+    Mcalib = np.concatenate([calib_modes_dm1, calib_modes_dm2], axis=1)
+    
+    return Mcalib
 
 def create_hadamard_modes(dm_mask): 
     Nacts = dm_mask.sum().astype(int)
@@ -165,40 +229,6 @@ def create_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both', 
     else:
         return np.array(modes)
 
-def create_fourier_probes(sysi, control_mask,
-                          fourier_sampling=0.25, 
-                          shift=(0,0), 
-                          nprobes=2, 
-                          plot=False, 
-                          calc_responses=False): 
-#     make probe modes from the sum of the cos and sin fourier modes
-    fourier_modes = create_fourier_modes(sysi, control_mask, fourier_sampling=fourier_sampling, use='both')
-    nfs = fourier_modes.shape[0]//2
-    Nact = sysi.Nact
-    
-    probes = np.zeros((nprobes, sysi.Nact, sysi.Nact))
-    sum_cos = fourier_modes[:nfs].sum(axis=0).reshape(Nact,Nact)
-    sum_sin = fourier_modes[nfs:].sum(axis=0).reshape(Nact,Nact)
-    
-    # nprobes=2 will give one probe that is purely the sum of cos and another that is the sum of sin
-    cos_weights = np.linspace(1,0,nprobes)
-    sin_weights = np.linspace(0,1,nprobes)
-    
-    if not isinstance(shift, list):
-        shifts = [shift]*nprobes
-    else:
-        shifts = shift
-    for i in range(nprobes):
-        probe = cos_weights[i]*sum_cos + sin_weights[i]*sum_sin
-        probe = scipy.ndimage.shift(probe, (shifts[i][1], shifts[i][0]))
-        probes[i] = probe/np.max(probe)
-        
-        if plot: 
-            response = xp.abs(xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift( pad_or_crop(xp.array(probes[i]), 4*Nact) ))))
-            imshows.imshow2(probes[i], response, pxscl2=1/4)
-            
-    return probes
-
 def fourier_mode(lambdaD_yx, rms=1, acts_per_D_yx=(34,34), Nact=34, phase=0):
     '''
     Allow linear combinations of sin/cos to rotate through the complex space
@@ -216,26 +246,7 @@ def fourier_mode(lambdaD_yx, rms=1, acts_per_D_yx=(34,34), Nact=34, phase=0):
     
     return prefactor * np.cos(arg + phase)
 
-def create_probe_poke_modes(Nact, 
-                            poke_indices,
-                            plot=False):
-    Nprobes = len(poke_indices)
-    probe_modes = np.zeros((Nprobes, Nact, Nact))
-    for i in range(Nprobes):
-        probe_modes[i, poke_indices[i][1], poke_indices[i][0]] = 1
-    if plot:
-        fig,ax = plt.subplots(nrows=1, ncols=Nprobes, dpi=125, figsize=(10,4))
-        for i in range(Nprobes):
-            im = ax[i].imshow(probe_modes[i], cmap='viridis')
-            divider = make_axes_locatable(ax[i])
-            cax = divider.append_axes("right", size="4%", pad=0.075)
-            fig.colorbar(im, cax=cax)
-        plt.close()
-        display(fig)
-        
-    return probe_modes
-
-def create_all_poke_modes(dm_mask):
+def create_all_poke_modes(dm_mask, ndms=1):
     Nact = dm_mask.shape[0]
     Nacts = int(np.sum(dm_mask))
     poke_modes = np.zeros((Nacts, Nact, Nact))
@@ -247,6 +258,9 @@ def create_all_poke_modes(dm_mask):
                 count+=1
 
     poke_modes = poke_modes[:,:].reshape(Nacts, Nact**2)
+    
+    if ndms==2:
+        poke_modes = create_2dm_mode_matrix(poke_modes)
     
     return poke_modes
 

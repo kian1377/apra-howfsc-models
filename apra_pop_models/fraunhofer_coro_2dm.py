@@ -1,8 +1,9 @@
 from .math_module import xp, _scipy, ensure_np_array
 from . import utils
 from . import imshows
+from . import dm
 
-from scoobpsf import dm
+# from scoobpsf import dm
 
 import numpy as np
 import astropy.units as u

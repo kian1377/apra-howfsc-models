@@ -41,7 +41,7 @@ class CORO():
                  lyot_diam=6.5*u.mm, 
                  npix=256, 
                  oversample=16,
-                 npsf=100,
+                 npsf=128,
                  psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
                  detector_rotation=0, 
@@ -276,8 +276,8 @@ class CORO():
         self.wf.wavefront = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(self.wf.wavefront, self.npix), 
                                                        nlamD, self.npsf, inverse=False, centering='FFTSTYLE')
         self.wf *= poppy.ScalarTransmission('Detector')
-        # if self.reverse_parity:
-        #     fpwf = xp.rot90(xp.rot90(fpwf))
+        if self.reverse_parity:
+            self.wf.wavefront = xp.rot90(xp.rot90(self.wf.wavefront))
         if save_wfs: wfs.append(copy.copy(self.wf))
 
         if save_wfs:

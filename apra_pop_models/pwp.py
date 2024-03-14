@@ -53,15 +53,19 @@ def run_pwp_bp(sysi,
     In = []
     for i,probe in enumerate(probes):
         for amp in amps:
-            sysi.add_dm(amp*probe)
-            psf = sysi.snap()
+            if callable(getattr(sysi, "add_dm", None)):
+                sysi.add_dm(amp*probe)
+                psf = sysi.snap()
+                sysi.add_dm(-amp*probe) # remove probe from DM
+            elif callable(getattr(sysi, "add_dm1", None)):
+                sysi.add_dm1(amp*probe)
+                psf = sysi.snap()
+                sysi.add_dm1(-amp*probe) # remove probe from DM
                 
             if amp==-1: 
                 In.append(psf)
             else: 
                 Ip.append(psf)
-                
-            sysi.add_dm(-amp*probe) # remove probe from DM
             
         if plot:
             imshows.imshow3(Ip[i], In[i], Ip[i]-In[i], lognorm1=True, lognorm2=True, pxscl=sysi.psf_pixelscale_lamD)
@@ -71,7 +75,9 @@ def run_pwp_bp(sysi,
     for i in range(len(probes)):
         if (use=='jacobian' or use.lower()=='j') and jacobian is not None:
             probe = xp.array(probes[i])
-            E_probe = jacobian.dot(xp.array(probe[sysi.dm_mask.astype(bool)]))
+            probe_command = xp.zeros(jacobian.shape[1])
+            probe_command[:sysi.Nacts] = probe[sysi.dm_mask.astype(bool)]
+            E_probe = jacobian.dot(probe_command)
             E_probe = E_probe[::2] + 1j*E_probe[1::2]
         elif (use=='model' or use=='m') and model is not None:
             if i==0: 

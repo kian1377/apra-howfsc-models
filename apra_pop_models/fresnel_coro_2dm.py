@@ -46,6 +46,7 @@ class CORO():
                  npix=512, 
                  oversample=4,
                  npsf=128,
+                #  psf_pixelscale=4.2763158e-6*u.m/u.pix,
                  psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
                  detector_rotation=0, 
@@ -120,13 +121,10 @@ class CORO():
 
         self.lyot_diam = lyot_diam
         self.use_lyot_stop = use_lyot_stop
-        self.pupil_lyot_ratio = self.fl_oap4.to_value(u.mm)/self.fl_oap3.to_value(u.mm)
-        if self.use_lyot_stop:
-            self.um_per_lamD = (self.wavelength_c*self.fl_oap9/(self.lyot_diam)).to(u.um)
-            self.LYOT = poppy.CircularAperture(radius=self.lyot_diam/2, name='Lyot Stop')
-        else:
-            self.um_per_lamD = (self.wavelength_c*self.fl_oap9/(self.pupil_diam*self.pupil_lyot_ratio)).to(u.um)
-            self.LYOT = poppy.ScalarTransmission('Lyot Pupil')
+        self.pupil_lyot_mag = self.fl_oap4.to_value(u.mm)/self.fl_oap3.to_value(u.mm)
+
+        self.um_per_lamD = (self.wavelength_c*self.fl_oap9/(self.lyot_diam)).to(u.um)
+        self.LYOT = poppy.CircularAperture(radius=self.lyot_diam/2, name='Lyot Stop')
 
         self.npsf = npsf
         if psf_pixelscale_lamD is None: # overrides psf_pixelscale this way
@@ -139,14 +137,20 @@ class CORO():
         self.Imax_ref = Imax_ref
 
         self.init_dms()
+        self.dm1_ref = dm1_ref
+        self.dm2_ref = dm2_ref
+        self.set_dm1(dm1_ref)
+        self.set_dm2(dm2_ref)
         self.init_fosys()
-        
+
+    
     def getattr(self, attr):
         return getattr(self, attr)
 
     def init_dms(self):
         pupil_pxscl = self.pupil_diam.to_value(u.um)/self.npix
-        sampling = int(np.round(300/pupil_pxscl))
+        sampling = 300/pupil_pxscl
+        # sampling = int(np.round(300/pupil_pxscl))
         inf, inf_sampling = dm.make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=sampling, coupling=0.15,)
         self.DM1 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM1')
         self.DM2 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM2')

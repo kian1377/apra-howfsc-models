@@ -179,7 +179,7 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
             fourier_surf = fourier_inf_fun * mft_command
             
             surf = xp.fft.ifft2(fourier_surf).real
-            surf = utils.pad_or_crop(surf, Nsurf//2 + inf_sampling)
+            surf = utils.pad_or_crop(surf, int(np.ceil(Nsurf//2 + inf_sampling)))
 
             return surf
 

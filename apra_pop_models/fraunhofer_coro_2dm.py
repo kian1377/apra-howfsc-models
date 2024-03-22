@@ -33,6 +33,41 @@ def make_vortex_phase_mask(npix, charge=6,
     
     return phasor
 
+def angular_spectrum(wavefront, wavelength, distance, pixelscale):
+    n = wavefront.shape[0]
+
+    delkx = 2*np.pi/(n*pixelscale.to_value(u.m/u.pix))
+    kxy = xp.linspace(-n/2, n/2-1, n)*delkx
+    k = 2*np.pi/wavelength.to_value(u.m)
+    kx, ky = xp.meshgrid(kxy,kxy)
+
+    wf_as = xp.fft.fftshift(xp.fft.fft2(xp.fft.fftshift(wavefront)))
+    
+    kz = xp.sqrt(k**2 - kx**2 - ky**2 + 0j)
+    tf = xp.exp(1j*kz*distance.to_value(u.m))
+
+    prop_wf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.fftshift(wf_as * tf)))
+    kz = 0.0
+    tf = 0.0
+
+    return prop_wf
+
+
+
+def AS(Ein, z):
+    E_hat = fft2d(Ein) # I need an amplitude factor
+    delkx = 2*np.pi/(n*delx)
+    
+    kxy = np.linspace(-n/2, n/2-1, n)*delkx
+#     print(kxy/delkx)
+    kx, ky = np.meshgrid(kxy,kxy)
+    
+    kz = np.sqrt(k**2 - kx**2 - ky**2 + 0j)
+    
+    E_as = ifft2d(E_hat * np.exp(1j*kz*z)) # I need an amplitude factor
+    return E_as
+
+
 class CORO():
 
     def __init__(self, 
@@ -290,7 +325,7 @@ class CORO():
             return wfs
         else:
             return self.wf
-        
+    
     def calc_psf(self):
 
         fpwf = self.calc_wfs(save_wfs=False, quiet=True).wavefront

@@ -15,6 +15,8 @@ import copy
 
 import poppy
 
+from scipy.signal import windows
+
 def make_vortex_phase_mask(npix, charge=6, 
                            grid='odd', 
                            singularity=None, 
@@ -134,7 +136,9 @@ class CORO():
         self.reverse_parity = False
 
         self.det_rotation = detector_rotation
-        
+    
+    
+
     def getattr(self, attr):
         return getattr(self, attr)
     
@@ -272,59 +276,114 @@ class CORO():
         command.ravel()[self.dm_mask.ravel()] = ensure_np_array(act_vector)
         return command
     
-    # def calc_wfs(self, save_wfs=True, quiet=True): # method for getting the PSF in photons
-    #     start = time.time()
-    #     if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
-    #     wfs = []
-    #     self.wf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
-    #                                      npix=self.npix, oversample=self.oversample)
-    #     self.wf *= poppy.CircularAperture(radius=self.pupil_diam/2, name='Coronagraph Pupil')
-    #     if save_wfs: wfs.append(copy.copy(self.wf))
+    def calc_wfs(self, save_wfs=True, quiet=True): # method for getting the PSF in photons
+        start = time.time()
+        if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
+        wfs = []
+        self.wf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
+                                         npix=self.npix, oversample=self.oversample)
+        self.wf *= poppy.CircularAperture(radius=self.pupil_diam/2, name='Coronagraph Pupil')
+        if save_wfs: wfs.append(copy.copy(self.wf))
 
-    #     WFE = poppy.ScalarTransmission(name='WFE Place-holder') if self.RETRIEVED is None else self.RETRIEVED
-    #     self.wf = self.wf*WFE
-    #     if save_wfs: wfs.append(copy.copy(self.wf))
+        WFE = poppy.ScalarTransmission(name='WFE Place-holder') if self.WFE is None else self.WFE
+        self.wf = self.wf*WFE
+        if save_wfs: wfs.append(copy.copy(self.wf))
 
-    #     self.wf = self.wf*self.DM1
-    #     if save_wfs: wfs.append(copy.copy(self.wf))
+        self.wf = self.wf*self.DM1
+        if save_wfs: wfs.append(copy.copy(self.wf))
 
-    #     self.wf.propagate_fresnel(self.d_dm1_dm2)
-    #     self.wf = self.wf*self.DM2
-    #     if save_wfs: wfs.append(copy.copy(self.wf))
+        self.wf.propagate_fresnel(self.d_dm1_dm2)
+        self.wf = self.wf*self.DM2
+        if save_wfs: wfs.append(copy.copy(self.wf))
 
-    #     self.wf.propagate_fresnel(-self.d_dm1_dm2)
-    #     self.wf *= poppy.ScalarTransmission('DM2 at Pupil')
-    #     if save_wfs: wfs.append(copy.copy(self.wf))
+        self.wf.propagate_fresnel(-self.d_dm1_dm2)
+        self.wf *= poppy.ScalarTransmission('DM2 at Pupil')
+        if save_wfs: wfs.append(copy.copy(self.wf))
 
-    #     # WFE = poppy.ScalarTransmission(name='WFE Place-holder') if self.RETRIEVED is None else self.RETRIEVED
-    #     # self.wf *= WFE
-    #     # wfs.append(copy.copy(self.wf))
+        # WFE = poppy.ScalarTransmission(name='WFE Place-holder') if self.RETRIEVED is None else self.RETRIEVED
+        # self.wf *= WFE
+        # wfs.append(copy.copy(self.wf))
 
-    #     self.wf.wavefront = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(self.wf.wavefront)))
-    #     FPM = xp.ones((self.N, self.N)) if self.FPM is None else self.FPM
-    #     self.wf.wavefront *= FPM
-    #     self.wf *= poppy.ScalarTransmission(name='FPM')
-    #     if save_wfs: wfs.append(copy.copy(self.wf))
+        self.wf.wavefront = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(self.wf.wavefront)))
+        FPM = xp.ones((self.N, self.N)) if self.FPM is None else self.FPM
+        self.wf.wavefront *= FPM
+        self.wf *= poppy.ScalarTransmission(name='FPM')
+        if save_wfs: wfs.append(copy.copy(self.wf))
 
-    #     self.wf.wavefront = xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(self.wf.wavefront)))
-    #     self.wf *= poppy.ScalarTransmission('Lyot Pupil')
-    #     if save_wfs: wfs.append(copy.copy(self.wf))
+        self.wf.wavefront = xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(self.wf.wavefront)))
+        self.wf *= poppy.ScalarTransmission('Lyot Pupil')
+        if save_wfs: wfs.append(copy.copy(self.wf))
 
-    #     self.wf = self.wf*self.LYOT
-    #     if save_wfs: wfs.append(copy.copy(self.wf))
+        self.wf = self.wf*self.LYOT
+        if save_wfs: wfs.append(copy.copy(self.wf))
 
-    #     nlamD = self.psf_pixelscale_lamD * self.npsf
-    #     self.wf.wavefront = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(self.wf.wavefront, self.npix), 
-    #                                                    nlamD, self.npsf, inverse=False, centering='FFTSTYLE')
-    #     self.wf *= poppy.ScalarTransmission('Detector')
-    #     if self.reverse_parity:
-    #         self.wf.wavefront = xp.rot90(xp.rot90(self.wf.wavefront))
-    #     if save_wfs: wfs.append(copy.copy(self.wf))
+        nlamD = self.psf_pixelscale_lamD * self.npsf
+        self.wf.wavefront = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(self.wf.wavefront, self.npix), 
+                                                       nlamD, self.npsf, inverse=False, centering='FFTSTYLE')
+        self.wf *= poppy.ScalarTransmission('Detector')
+        if self.reverse_parity:
+            self.wf.wavefront = xp.rot90(xp.rot90(self.wf.wavefront))
+        if save_wfs: wfs.append(copy.copy(self.wf))
 
-    #     if save_wfs:
-    #         return wfs
-    #     else:
-    #         return self.wf
+        if save_wfs:
+            return wfs
+        else:
+            return self.wf
+    
+    def apply_vortex(self, pupil_wf):
+        # course FPM first
+        vortex_mask = make_vortex_phase_mask(self.Nfpm)
+
+        window_size = int(30/ (self.npix/self.Nfpm))
+        print(window_size)
+        w1d = xp.array(windows.tukey(window_size, 1, False))
+        low_res_window = 1 - utils.pad_or_crop(xp.outer(w1d, w1d), self.Nfpm)
+        imshows.imshow1(low_res_window, npix=128, pxscl=self.npix/self.Nfpm)
+
+        fp_wf_low_res = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(utils.pad_or_crop(pupil_wf, self.Nfpm)))) # to FPM
+        fp_wf_low_res *= vortex_mask * low_res_window # apply FPM
+        pupil_wf_low_res = utils.pad_or_crop(xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(fp_wf_low_res))), self.N) # to Lyot Pupil
+
+        # high res FPM second
+        high_res_sampling = 0.025 # lam/D per pixel
+        # Nmft = self.Nfpm
+        Nmft = int(np.round(30/high_res_sampling))
+        # vortex_mask = utils.pad_or_crop(vortex_mask, Nmft)
+        vortex_mask = make_vortex_phase_mask(Nmft)
+        window_size = int(30/high_res_sampling)
+        print(window_size)
+        w1d = xp.array(windows.tukey(window_size, 1, False))
+        high_res_window = utils.pad_or_crop(xp.outer(w1d, w1d), Nmft)
+
+        # x = xp.linspace(-self.Nfpm//2, self.Nfpm//2-1, self.Nfpm) * high_res_sampling
+        x = (xp.linspace(-Nmft//2, Nmft//2-1, Nmft)) * high_res_sampling
+        x,y = xp.meshgrid(x,x)
+        r = xp.sqrt(x**2 + y**2)
+        sing_mask = r>0.15
+        high_res_window *= sing_mask
+
+        imshows.imshow1(high_res_window, npix=int(np.round(128*9.765625)), pxscl=high_res_sampling)
+
+        nlamD = high_res_sampling * Nmft
+        centering = 'SYMMETRIC'
+        centering = 'FFTSTYLE'
+        fp_wf_high_res = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(pupil_wf, self.npix), 
+                                                    nlamD, Nmft, inverse=False, centering=centering)
+        fp_wf_high_res *= vortex_mask * high_res_window # apply FPM
+        pupil_wf_high_res = poppy.matrixDFT.matrix_dft(fp_wf_high_res,
+                                                       nlamD, self.npix, inverse=True, centering=centering)
+        pupil_wf_high_res = utils.pad_or_crop(pupil_wf_high_res, self.N)
+
+        # fp_wf_high_res = poppy.matrixDFT.matrix_dft(pupil_wf, 
+        #                                             nlamD, Nmft, inverse=False, centering=centering)
+        # fp_wf_high_res *= vortex_mask * high_res_window # apply FPM
+        # pupil_wf_high_res = poppy.matrixDFT.matrix_dft(fp_wf_high_res,
+        #                                                nlamD, self.N, inverse=True, centering=centering)
+        # pupil_wf_high_res = utils.pad_or_crop(pupil_wf_high_res, self.N)
+
+        post_fpm_pupil = pupil_wf_low_res + pupil_wf_high_res
+
+        return post_fpm_pupil
     
     # def apply_vortex(self, pupil_wf):
     #     from scipy.signal import windows
@@ -332,171 +391,124 @@ class CORO():
     #     # course FPM first
     #     vortex_mask = make_vortex_phase_mask(self.Nfpm)
 
-    #     window_size = int(30/ (self.npix/self.Nfpm)) 
+    #     window_size_lamD = 30
+    #     window_size = int(window_size_lamD/ (self.npix/self.Nfpm)) 
     #     wx = xp.array(windows.tukey(window_size, 1, False))
     #     wy = xp.array(windows.tukey(window_size, 1, False))
     #     low_res_window = 1 - utils.pad_or_crop(xp.outer(wy, wx), self.Nfpm)
-    #     imshows.imshow1(low_res_window, npix=128, pxscl=self.npix/self.Nfpm)
+    #     ndisp = 256
+    #     imshows.imshow1(low_res_window, npix=ndisp, pxscl=self.npix/self.Nfpm)
 
     #     fp_wf_low_res = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(utils.pad_or_crop(pupil_wf, self.Nfpm)))) # to FPM
     #     fp_wf_low_res *= vortex_mask * low_res_window # apply FPM
     #     pupil_wf_low_res = utils.pad_or_crop(xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(fp_wf_low_res))), self.N) # to Lyot Pupil
+        
+    #     post_fpm_pupil = pupil_wf_low_res
 
     #     # high res FPM second
-    #     high_res_sampling = 0.020 # lam/D per pixel
-    #     Nmft = int(np.round(30/high_res_sampling))
-    #     vortex_mask = utils.pad_or_crop(vortex_mask, Nmft)
-    #     window_size = int(30/high_res_sampling)
+    #     centering = 'FFTSTYLE'
+    #     # centering = 'SYMMETRIC'
+    #     high_res_sampling = 0.025 # lam/D per pixel
+    #     window_size = int(window_size_lamD/high_res_sampling)
     #     wx = xp.array(windows.tukey(window_size, 1, False))
     #     wy = xp.array(windows.tukey(window_size, 1, False))
-    #     # high_res_window = utils.pad_or_crop(xp.outer(wy, wx), self.Nfpm)
-    #     high_res_window = utils.pad_or_crop(xp.outer(wy, wx), Nmft)
+    #     high_res_window_big = utils.pad_or_crop(xp.outer(wy, wx), self.Nfpm)
 
-    #     # x = xp.linspace(-self.Nfpm//2, self.Nfpm//2-1, self.Nfpm) * high_res_sampling
-    #     x = xp.linspace(-Nmft//2, Nmft//2 -1, Nmft) * high_res_sampling
-    #     x,y = xp.meshgrid(x,x)
-    #     r = xp.sqrt(x**2 + y**2)
-    #     sing_mask = r>0.3
-    #     high_res_window *= sing_mask
+    #     window_size_lamD = 0.3
+    #     window_size = int(window_size_lamD/high_res_sampling)
+    #     wx = xp.array(windows.tukey(window_size, 1, False))
+    #     wy = xp.array(windows.tukey(window_size, 1, False))
+    #     high_res_window_small = utils.pad_or_crop(xp.outer(wy, wx), self.Nfpm)
+    #     high_res_window = high_res_window_big - high_res_window_small
+    #     imshows.imshow1(high_res_window, npix=int(np.round(ndisp*self.npix/self.Nfpm/high_res_sampling)), pxscl=high_res_sampling)
+    #     imshows.imshow1(high_res_window, npix=128, pxscl=high_res_sampling)
 
-    #     imshows.imshow1(high_res_window, npix=int(np.round(128*9.765625)), pxscl=high_res_sampling)
-
-    #     # nlamD = high_res_sampling * self.Nfpm
-    #     nlamD = high_res_sampling * Nmft
-    #     # centering = 'SYMMETRIC'
-    #     centering = 'FFTSTYLE'
+    #     nlamD = high_res_sampling * self.Nfpm
     #     fp_wf_high_res = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(pupil_wf, self.npix), 
-    #                                                 nlamD, Nmft, inverse=False, centering=centering)
+    #                                                 nlamD, self.Nfpm, inverse=False, centering=centering)
     #     fp_wf_high_res *= vortex_mask * high_res_window # apply FPM
     #     pupil_wf_high_res = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(fp_wf_high_res, self.npix), 
-    #                                                    nlamD, self.N, inverse=True, centering=centering)
-    #     # pupil_wf_high_res = utils.pad_or_crop(pupil_wf_high_res, self.N)
+    #                                                    nlamD, self.Nfpm, inverse=True, centering=centering)
+    #     pupil_wf_high_res = utils.pad_or_crop(pupil_wf_high_res, self.N)
 
-    #     post_fpm_pupil = pupil_wf_low_res + pupil_wf_high_res
+    #     post_fpm_pupil += pupil_wf_high_res
+
+    #     # high res FPM third
+    #     high_res_sampling = 0.0025 # lam/D per pixel
+    #     window_size = int(window_size_lamD/high_res_sampling)
+    #     wx = xp.array(windows.tukey(window_size, 1, False))
+    #     wy = xp.array(windows.tukey(window_size, 1, False))
+    #     high_res_window = utils.pad_or_crop(xp.outer(wy, wx), self.Nfpm)
+
+    #     # x = xp.linspace(-self.Nfpm//2, self.Nfpm//2-1, self.Nfpm) * high_res_sampling
+    #     # x,y = xp.meshgrid(x,x)
+    #     # r = xp.sqrt(x**2 + y**2)
+    #     # sing_mask = r>0.3
+
+    #     imshows.imshow1(high_res_window, npix=int(np.round(128*10)), pxscl=high_res_sampling)
+
+    #     nlamD = high_res_sampling * self.Nfpm
+    #     fp_wf_high_res = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(pupil_wf, self.npix), 
+    #                                                 nlamD, self.Nfpm, inverse=False, centering=centering)
+    #     fp_wf_high_res *= vortex_mask * high_res_window # apply FPM
+    #     pupil_wf_high_res = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(fp_wf_high_res, self.npix), 
+    #                                                    nlamD, self.Nfpm, inverse=True, centering=centering)
+    #     pupil_wf_high_res = utils.pad_or_crop(pupil_wf_high_res, self.N)
+
+    #     post_fpm_pupil += pupil_wf_high_res
 
     #     return post_fpm_pupil
     
-    def apply_vortex(self, pupil_wf):
-        from scipy.signal import windows
+    # def calc_wfs(self, save_wfs=True, quiet=True): # method for getting the PSF in photons
+    #     start = time.time()
+    #     if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
+    #     wfs = []
+    #     self.fwf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
+    #                                       npix=self.npix, oversample=self.oversample)
+    #     self.wf = xp.ones((self.N, self.N), dtype=complex)
+    #     self.wf *= poppy.CircularAperture(radius=self.pupil_diam/2).get_transmission(self.fwf)
+    #     if save_wfs: wfs.append(copy.copy(self.wf))
 
-        # course FPM first
-        vortex_mask = make_vortex_phase_mask(self.Nfpm)
+    #     self.wf *= self.WFE
+    #     if save_wfs: wfs.append(copy.copy(self.wf))
 
-        window_size = int(30/ (self.npix/self.Nfpm)) 
-        wx = xp.array(windows.tukey(window_size, 1, False))
-        wy = xp.array(windows.tukey(window_size, 1, False))
-        low_res_window = 1 - utils.pad_or_crop(xp.outer(wy, wx), self.Nfpm)
-        imshows.imshow1(low_res_window, npix=128, pxscl=self.npix/self.Nfpm)
+    #     dm1_surf = utils.pad_or_crop(self.DM1.get_surface(), self.N)
+    #     self.wf *= xp.exp(1j*2*np.pi/self.wavelength.to_value(u.m) * 2*dm1_surf)
+    #     if save_wfs: wfs.append(copy.copy(self.wf))
 
-        fp_wf_low_res = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(utils.pad_or_crop(pupil_wf, self.Nfpm)))) # to FPM
-        fp_wf_low_res *= vortex_mask * low_res_window # apply FPM
-        pupil_wf_low_res = utils.pad_or_crop(xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(fp_wf_low_res))), self.N) # to Lyot Pupil
+    #     dm2_surf = utils.pad_or_crop(self.DM2.get_surface(), self.N)
+    #     self.wf = prop_as(self.wf, self.wavelength, self.d_dm1_dm2, self.pupil_diam/(self.npix*u.pix))
+    #     self.wf *= xp.exp(1j*2*np.pi/self.wavelength.to_value(u.m) * 2*dm2_surf)
+    #     if save_wfs: wfs.append(copy.copy(self.wf))
+
+    #     self.wf = prop_as(self.wf, self.wavelength, -self.d_dm1_dm2, self.pupil_diam/(self.npix*u.pix)) # back to pupil
+    #     if save_wfs: wfs.append(copy.copy(self.wf))
+
+    #     self.wf = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(utils.pad_or_crop(self.wf, self.Nfpm)))) # to FPM
+    #     if save_wfs: wfs.append(copy.copy(self.wf))
         
-        post_fpm_pupil = pupil_wf_low_res
+    #     self.wf *= self.FPM # apply FPM
+    #     if save_wfs: wfs.append(copy.copy(self.wf))
 
-        # high res FPM second
-        centering = 'FFTSTYLE'
-        # centering = 'SYMMETRIC'
-        high_res_sampling = 0.025 # lam/D per pixel
-        window_size = int(32/high_res_sampling)
-        wx = xp.array(windows.tukey(window_size, 1, False))
-        wy = xp.array(windows.tukey(window_size, 1, False))
-        high_res_window_big = utils.pad_or_crop(xp.outer(wy, wx), self.Nfpm)
+    #     self.wf = utils.pad_or_crop(xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(self.wf))), self.N) # to Lyot Pupil
+    #     if save_wfs: wfs.append(copy.copy(self.wf)) 
 
-        window_size = int(0.32/high_res_sampling)
-        wx = xp.array(windows.tukey(window_size, 1, False))
-        wy = xp.array(windows.tukey(window_size, 1, False))
-        high_res_window_small = utils.pad_or_crop(xp.outer(wy, wx), self.Nfpm)
-        high_res_window = high_res_window_big - high_res_window_small
-        imshows.imshow1(high_res_window, npix=int(np.round(128*9.765625)), pxscl=high_res_sampling)
-        imshows.imshow1(high_res_window, npix=128, pxscl=high_res_sampling)
+    #     # self.LYOT = poppy.CircularAperture(radius=self.lyot_diam/2/self.pupil_lyot_mag, name='Lyot Stop')
 
-        nlamD = high_res_sampling * self.Nfpm
-        fp_wf_high_res = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(pupil_wf, self.npix), 
-                                                    nlamD, self.Nfpm, inverse=False, centering=centering)
-        fp_wf_high_res *= vortex_mask * high_res_window # apply FPM
-        pupil_wf_high_res = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(fp_wf_high_res, self.npix), 
-                                                       nlamD, self.Nfpm, inverse=True, centering=centering)
-        pupil_wf_high_res = utils.pad_or_crop(pupil_wf_high_res, self.N)
+    #     self.wf *= poppy.CircularAperture(radius=self.lyot_diam/2).get_transmission(self.fwf) # apply Lyot stop
+    #     if save_wfs: wfs.append(copy.copy(self.wf))
 
-        post_fpm_pupil += pupil_wf_high_res
+    #     nlamD = self.psf_pixelscale_lamD * self.npsf
+    #     self.wf = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(self.wf, self.npix), 
+    #                                          nlamD, self.npsf, inverse=False, centering='FFTSTYLE')
+    #     if self.reverse_parity:
+    #         self.wf = xp.rot90(xp.rot90(self.wf))
+    #     if save_wfs: wfs.append(copy.copy(self.wf))
 
-        # high res FPM third
-        high_res_sampling = 0.0025 # lam/D per pixel
-        window_size = int(0.32/high_res_sampling)
-        wx = xp.array(windows.tukey(window_size, 1, False))
-        wy = xp.array(windows.tukey(window_size, 1, False))
-        high_res_window = utils.pad_or_crop(xp.outer(wy, wx), self.Nfpm)
-
-        # x = xp.linspace(-self.Nfpm//2, self.Nfpm//2-1, self.Nfpm) * high_res_sampling
-        # x,y = xp.meshgrid(x,x)
-        # r = xp.sqrt(x**2 + y**2)
-        # sing_mask = r>0.3
-
-        imshows.imshow1(high_res_window, npix=int(np.round(128*10)), pxscl=high_res_sampling)
-
-        nlamD = high_res_sampling * self.Nfpm
-        fp_wf_high_res = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(pupil_wf, self.npix), 
-                                                    nlamD, self.Nfpm, inverse=False, centering=centering)
-        fp_wf_high_res *= vortex_mask * high_res_window # apply FPM
-        pupil_wf_high_res = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(fp_wf_high_res, self.npix), 
-                                                       nlamD, self.Nfpm, inverse=True, centering=centering)
-        pupil_wf_high_res = utils.pad_or_crop(pupil_wf_high_res, self.N)
-
-        post_fpm_pupil += pupil_wf_high_res
-
-        return post_fpm_pupil
-    
-    def calc_wfs(self, save_wfs=True, quiet=True): # method for getting the PSF in photons
-        start = time.time()
-        if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
-        wfs = []
-        self.fwf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
-                                          npix=self.npix, oversample=self.oversample)
-        self.wf = xp.ones((self.N, self.N), dtype=complex)
-        self.wf *= poppy.CircularAperture(radius=self.pupil_diam/2).get_transmission(self.fwf)
-        if save_wfs: wfs.append(copy.copy(self.wf))
-
-        self.wf *= self.WFE
-        if save_wfs: wfs.append(copy.copy(self.wf))
-
-        dm1_surf = utils.pad_or_crop(self.DM1.get_surface(), self.N)
-        self.wf *= xp.exp(1j*2*np.pi/self.wavelength.to_value(u.m) * 2*dm1_surf)
-        if save_wfs: wfs.append(copy.copy(self.wf))
-
-        dm2_surf = utils.pad_or_crop(self.DM2.get_surface(), self.N)
-        self.wf = prop_as(self.wf, self.wavelength, self.d_dm1_dm2, self.pupil_diam/(self.npix*u.pix))
-        self.wf *= xp.exp(1j*2*np.pi/self.wavelength.to_value(u.m) * 2*dm2_surf)
-        if save_wfs: wfs.append(copy.copy(self.wf))
-
-        self.wf = prop_as(self.wf, self.wavelength, -self.d_dm1_dm2, self.pupil_diam/(self.npix*u.pix)) # back to pupil
-        if save_wfs: wfs.append(copy.copy(self.wf))
-
-        self.wf = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(utils.pad_or_crop(self.wf, self.Nfpm)))) # to FPM
-        if save_wfs: wfs.append(copy.copy(self.wf))
-        
-        self.wf *= self.FPM # apply FPM
-        if save_wfs: wfs.append(copy.copy(self.wf))
-
-        self.wf = utils.pad_or_crop(xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(self.wf))), self.N) # to Lyot Pupil
-        if save_wfs: wfs.append(copy.copy(self.wf)) 
-
-        # self.LYOT = poppy.CircularAperture(radius=self.lyot_diam/2/self.pupil_lyot_mag, name='Lyot Stop')
-
-        self.wf *= poppy.CircularAperture(radius=self.lyot_diam/2).get_transmission(self.fwf) # apply Lyot stop
-        if save_wfs: wfs.append(copy.copy(self.wf))
-
-        nlamD = self.psf_pixelscale_lamD * self.npsf
-        self.wf = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(self.wf, self.npix), 
-                                             nlamD, self.npsf, inverse=False, centering='FFTSTYLE')
-        if self.reverse_parity:
-            self.wf = xp.rot90(xp.rot90(self.wf))
-        if save_wfs: wfs.append(copy.copy(self.wf))
-
-        if save_wfs:
-            return wfs
-        else:
-            return self.wf
+    #     if save_wfs:
+    #         return wfs
+    #     else:
+    #         return self.wf
     
     def calc_psf(self):
 

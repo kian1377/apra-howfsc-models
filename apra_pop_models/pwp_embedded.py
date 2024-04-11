@@ -77,6 +77,9 @@ def run_pwp_bp(sysi,
         if plot:
             imshows.imshow3(Ip[i], In[i], Ip[i]-In[i], lognorm1=True, lognorm2=True, pxscl=sysi.psf_pixelscale_lamD)
     
+    # embedded_controller.compute_estimate(, probes=probes, diffs=delI, reg_cond=reg_cond)
+
+    # these for-loops should be embedded on the p5040
     E_probes = xp.zeros((probes.shape[0], 2*Nmask))
     I_diff = xp.zeros((probes.shape[0], Nmask))
     for i in range(len(probes)):
@@ -96,10 +99,10 @@ def run_pwp_bp(sysi,
         E_probes[i, 1::2] = E_probe.imag
 
         I_diff[i:(i+1), :] = (Ip[i] - In[i])[control_mask]
-    
+
     # Use batch process to estimate each pixel individually
     E_est = xp.zeros(Nmask, dtype=xp.complex128)
-    for i in range(Nmask):
+    for i in range(Nmask): 
         delI = I_diff[:, i]
         M = 4*xp.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
         Minv = xp.linalg.pinv(M.T@M, 1e-2)@M.T

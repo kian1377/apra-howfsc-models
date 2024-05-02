@@ -164,11 +164,11 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
 
             # oversample = 2
             Nsurf = int(inf_sampling*self.Nact)
-            print(Nsurf)
+            # print(Nsurf)
             Nsurf = int(2 ** np.ceil(np.log2(Nsurf - 1)))  # next power of 2
-            print(Nsurf)
+            # print(Nsurf)
             inf_fun = utils.pad_or_crop(inf_fun, Nsurf)
-            print(inf_fun.shape)
+            # print(inf_fun.shape)
             # coordinates of DM command in actuator space
             xc = inf_sampling*(xp.linspace(-self.Nact//2, self.Nact//2-1, self.Nact)+1/2)
             yc = inf_sampling*(xp.linspace(-self.Nact//2, self.Nact//2-1, self.Nact) + 1/2)

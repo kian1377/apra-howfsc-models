@@ -17,8 +17,9 @@ from . import utils
 import matplotlib.patches as patches
 
 def make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=25, coupling=0.15,
-                            plot=False,
-                            save_fits=None):
+                        #   Nsurf=None, 
+                          plot=False,
+                          save_fits=None):
 
     Nacts_per_inf = 4 # number of influence functions across the grid
     ng = int(sampling*Nacts_per_inf)
@@ -151,7 +152,7 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
             Use Scott Will's MFT DM implementation, 
             see "Wavefront control with algorithmic differentiation on the HiCAT testbed" Appendix B
             '''
-            
+
             if pixelscale is None:
                 inf_sampling = self.inf_sampling
                 inf_fun = self.inf_fun
@@ -161,25 +162,31 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
                 inf_fun = utils.interp_arr(self.inf_fun, self.inf_pixelscale.to_value(u.m/u.pix), pixelscale.to_value(u.m/u.pix), order=3)
                 # inf_fun = interp_arr(self.inf_fun, scale)
 
+            # oversample = 2
+            Nsurf = int(inf_sampling*self.Nact)
+            print(Nsurf)
+            Nsurf = int(2 ** np.ceil(np.log2(Nsurf - 1)))  # next power of 2
+            print(Nsurf)
+            inf_fun = utils.pad_or_crop(inf_fun, Nsurf)
+            print(inf_fun.shape)
+            # coordinates of DM command in actuator space
             xc = inf_sampling*(xp.linspace(-self.Nact//2, self.Nact//2-1, self.Nact)+1/2)
             yc = inf_sampling*(xp.linspace(-self.Nact//2, self.Nact//2-1, self.Nact) + 1/2)
 
-            oversample = 2
-            Nsurf = int(inf_sampling*self.Nact*oversample)
-
-            fx = xp.fft.fftfreq(Nsurf)
+            # coordinates of DM surface in frequency space
+            fx = xp.fft.fftfreq(Nsurf) 
             fy = xp.fft.fftfreq(Nsurf)
 
-            Mx = xp.exp(-1j*2*np.pi*xp.outer(fx,xc))
-            My = xp.exp(-1j*2*np.pi*xp.outer(yc,fy))
+            Mx = xp.exp(-1j*2*np.pi * xp.outer(fx,xc))
+            My = xp.exp(-1j*2*np.pi * xp.outer(yc,fy))
 
             mft_command = Mx@self.command@My
 
-            fourier_inf_fun = xp.fft.fft2(utils.pad_or_crop(inf_fun, Nsurf))
+            fourier_inf_fun = xp.fft.fft2(inf_fun)
             fourier_surf = fourier_inf_fun * mft_command
             
             surf = xp.fft.ifft2(fourier_surf).real
-            surf = utils.pad_or_crop(surf, int(np.ceil(Nsurf//2 + inf_sampling)))
+            # surf = utils.pad_or_crop(surf, int(np.ceil(Nsurf//oversample + inf_sampling)))
 
             return surf
 

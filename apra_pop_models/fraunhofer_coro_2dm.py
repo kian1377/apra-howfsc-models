@@ -20,7 +20,7 @@ from scipy.signal import windows
 def make_vortex_phase_mask(npix, charge=6, 
                            grid='odd', 
                            singularity=None, 
-                           focal_length=500*u.mm, pupil_diam=9.7*u.mm, wavelength=632.8*u.nm):
+                           focal_length=500*u.mm, pupil_diam=9.5*u.mm, wavelength=650*u.nm):
     if grid=='odd':
         x = xp.linspace(-npix//2, npix//2-1, npix)
     elif grid=='even':
@@ -107,7 +107,11 @@ def mft_forward(pupil, psf_pixelscale_lamD, npsf):
     My = xp.exp(-1j*2*np.pi*vy) 
     Mx = xp.exp(-1j*2*np.pi*xu) 
 
-    return Mx@pupil@My
+    # norm_coeff = np.sqrt( (nlamDY * nlamDX) / (npupY * npupX * npixY * npixX) )
+    # norm_coeff = np.sqrt( psf_pixelscale_lamD / (npix) )
+    norm_coeff = psf_pixelscale_lamD/npix 
+
+    return Mx@pupil@My * norm_coeff
 
 def mft_reverse(fpwf, psf_pixelscale_lamD, npix):
     """_summary_
@@ -142,7 +146,9 @@ def mft_reverse(fpwf, psf_pixelscale_lamD, npix):
     My = xp.exp(-1j*2*np.pi*yv) 
     Mx = xp.exp(-1j*2*np.pi*ux) 
 
-    return Mx@fpwf@My
+    norm_coeff = psf_pixelscale_lamD/npix 
+
+    return Mx@fpwf@My * norm_coeff
 
 class CORO():
 
@@ -151,7 +157,6 @@ class CORO():
                  npsf=128,
                  psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
-                 detector_rotation=0, 
                  dm1_ref=np.zeros((34,34)),
                  dm2_ref=np.zeros((34,34)),
                  dm_inf=None, # defaults to inf.fits
@@ -220,11 +225,12 @@ class CORO():
         self.psf_pixelscale_lamD = (self._psf_pixelscale / self.um_per_lamD).decompose().value
 
     def init_dms(self):
+        act_spacing = 300e-6*u.m
         pupil_pxscl = self.pupil_diam.to_value(u.m)/self.npix
-        sampling = 300e-6/pupil_pxscl
-        print(sampling)
+        sampling = act_spacing.to_value(u.m)/pupil_pxscl
+        print('influence function sampling', sampling)
         # sampling = int(np.round(300/pupil_pxscl))
-        inf, inf_sampling = dm.make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=sampling, coupling=0.15,)
+        inf, inf_sampling = dm.make_gaussian_inf_fun(act_spacing=act_spacing, sampling=sampling, coupling=0.15,)
         self.DM1 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM1')
         self.DM2 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM2')
 
@@ -301,7 +307,8 @@ class CORO():
 
         self.wf = prop_as(self.wf, self.wavelength, self.d_dm1_dm2, self.pupil_diam/(self.npix*u.pix))
         dm2_surf = utils.pad_or_crop(self.DM2.get_surface(), self.N)
-        imshows.imshow2(dm1_surf, dm2_surf)
+        # imshows.imshow1(dm2_surf)
+
         self.wf *= xp.exp(1j*4*np.pi*dm2_surf/self.wavelength.to_value(u.m))
         if save_wfs: wfs.append(copy.copy(self.wf))
 
@@ -309,13 +316,13 @@ class CORO():
         if save_wfs: wfs.append(copy.copy(self.wf))
 
         if self.use_fpm:
-            self.wf = self.apply_vortex()
+            self.wf = self.apply_vortex(self.wf, plot=False)
         if save_wfs: wfs.append(copy.copy(self.wf))
 
         self.wf *= utils.pad_or_crop(self.LYOT, self.N).astype(complex)
         if save_wfs: wfs.append(copy.copy(self.wf))
 
-        self.wf = mft_forward(utils.pad_or_crop(self.wf, self.npix), self.psf_pixelscale_lamD, self.npsf)
+        self.wf = mft_forward(utils.pad_or_crop(self.wf, self.npix), self.psf_pixelscale_lamD, self.npsf)/xp.sqrt(self.Imax_ref)
         if self.reverse_parity:
             self.wf.wavefront = xp.rot90(xp.rot90(self.wf.wavefront))
         if save_wfs: wfs.append(copy.copy(self.wf))
@@ -325,15 +332,15 @@ class CORO():
         else:
             return self.wf
     
-    def apply_vortex(self, pupil_wf):
+    def apply_vortex(self, pupil_wf, plot=False):
         # course FPM first
         vortex_mask = make_vortex_phase_mask(self.Nfpm)
 
         window_size = int(30/ (self.npix/self.Nfpm))
-        print(window_size)
+        # print(window_size)
         w1d = xp.array(windows.tukey(window_size, 1, False))
         low_res_window = 1 - utils.pad_or_crop(xp.outer(w1d, w1d), self.Nfpm)
-        imshows.imshow1(low_res_window, npix=128, pxscl=self.npix/self.Nfpm)
+        if plot: imshows.imshow1(low_res_window, npix=128, pxscl=self.npix/self.Nfpm)
 
         fp_wf_low_res = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(utils.pad_or_crop(pupil_wf, self.Nfpm)))) # to FPM
         fp_wf_low_res *= vortex_mask * low_res_window # apply FPM
@@ -346,7 +353,6 @@ class CORO():
         # vortex_mask = utils.pad_or_crop(vortex_mask, Nmft)
         vortex_mask = make_vortex_phase_mask(Nmft)
         window_size = int(30/high_res_sampling)
-        print(window_size)
         w1d = xp.array(windows.tukey(window_size, 1, False))
         high_res_window = utils.pad_or_crop(xp.outer(w1d, w1d), Nmft)
 
@@ -357,24 +363,12 @@ class CORO():
         sing_mask = r>0.15
         high_res_window *= sing_mask
 
-        imshows.imshow1(high_res_window, npix=int(np.round(128*9.765625)), pxscl=high_res_sampling)
+        if plot: imshows.imshow1(high_res_window, npix=int(np.round(128*9.765625)), pxscl=high_res_sampling)
 
-        nlamD = high_res_sampling * Nmft
-        centering = 'SYMMETRIC'
-        centering = 'FFTSTYLE'
-        fp_wf_high_res = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(pupil_wf, self.npix), 
-                                                    nlamD, Nmft, inverse=False, centering=centering)
+        fp_wf_high_res = mft_forward(utils.pad_or_crop(pupil_wf, self.npix), high_res_sampling, Nmft)
         fp_wf_high_res *= vortex_mask * high_res_window # apply FPM
-        pupil_wf_high_res = poppy.matrixDFT.matrix_dft(fp_wf_high_res,
-                                                       nlamD, self.npix, inverse=True, centering=centering)
+        pupil_wf_high_res = mft_reverse(fp_wf_high_res, high_res_sampling, self.npix,)
         pupil_wf_high_res = utils.pad_or_crop(pupil_wf_high_res, self.N)
-
-        # fp_wf_high_res = poppy.matrixDFT.matrix_dft(pupil_wf, 
-        #                                             nlamD, Nmft, inverse=False, centering=centering)
-        # fp_wf_high_res *= vortex_mask * high_res_window # apply FPM
-        # pupil_wf_high_res = poppy.matrixDFT.matrix_dft(fp_wf_high_res,
-        #                                                nlamD, self.N, inverse=True, centering=centering)
-        # pupil_wf_high_res = utils.pad_or_crop(pupil_wf_high_res, self.N)
 
         post_fpm_pupil = pupil_wf_low_res + pupil_wf_high_res
 
@@ -510,14 +504,14 @@ class CORO():
         # fpwf = self.calc_wfs(save_wfs=False, quiet=True).wavefront
         fpwf = self.calc_wfs(save_wfs=False, quiet=True)
 
-        return fpwf/xp.sqrt(self.Imax_ref)
+        return fpwf
     
     def snap(self): # method for getting the PSF in photons
         
         # image = self.calc_wfs(save_wfs=False, quiet=True).intensity
         image = xp.abs(self.calc_wfs(save_wfs=False, quiet=True))**2
 
-        return image/self.Imax_ref
+        return image
     
 
 

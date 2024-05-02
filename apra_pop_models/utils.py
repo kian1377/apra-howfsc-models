@@ -115,9 +115,13 @@ def generate_wfe(diam,
         wfe_opd -= Zc_opd[i] * Zs[i]
     wfe_amp += 1
 
+    mask = poppy.CircularAperture(radius=diam/2).get_transmission(wf)>0
+    wfe_rms = xp.sqrt(xp.mean(xp.square(wfe_opd[mask])))
+    wfe_opd *= opd_rms.to_value(u.m)/wfe_rms
+
     wfe = wfe_amp * xp.exp(1j*2*np.pi/wavelength.to_value(u.m) * wfe_opd)
     wfe *= poppy.CircularAperture(radius=diam/2).get_transmission(wf)
-    
+
     return wfe
 
 def save_fits(fpath, data, header=None, ow=True, quiet=False):

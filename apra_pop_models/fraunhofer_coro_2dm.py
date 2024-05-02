@@ -39,6 +39,24 @@ def make_vortex_phase_mask(npix, charge=6,
     return phasor
 
 def prop_as(wavefront, wavelength, distance, pixelscale):
+    """Propagate a wavefront a given distance via the angular spectrum method. 
+
+    Parameters
+    ----------
+    wavefront : complex 2D array
+        the input wavefront
+    wavelength : astropy quantity
+        the wavelength of the wavefront
+    distance : astropy quantity
+        distance to propagate wavefront
+    pixelscale : astropy quantity
+        pixelscale in physical units of the wavefront
+
+    Returns
+    -------
+    complex 2D array
+        the propagated wavefront
+    """
     n = wavefront.shape[0]
 
     delkx = 2*np.pi/(n*pixelscale.to_value(u.m/u.pix))
@@ -57,26 +75,79 @@ def prop_as(wavefront, wavelength, distance, pixelscale):
 
     return prop_wf
 
-# def AS(Ein, z):
-#     E_hat = fft2d(Ein) # I need an amplitude factor
-#     delkx = 2*np.pi/(n*delx)
-    
-#     kxy = np.linspace(-n/2, n/2-1, n)*delkx
-# #     print(kxy/delkx)
-#     kx, ky = np.meshgrid(kxy,kxy)
-    
-#     kz = np.sqrt(k**2 - kx**2 - ky**2 + 0j)
-    
-#     E_as = ifft2d(E_hat * np.exp(1j*kz*z)) # I need an amplitude factor
-#     return E_as
+def mft_forward(pupil, psf_pixelscale_lamD, npsf):
+    """_summary_
 
+    Parameters
+    ----------
+    pupil : complex 2D array
+        the pupil plane wavefront
+    psf_pixelscale_lamD : scalar
+        the pixelscale of the desired focal plane wavefront in terms
+        of lambda/D
+    npsf : integer
+        the size of the desired focal plane in pixels
+
+    Returns
+    -------
+    complex 2D array
+        the complex wavefront at the focal plane
+    """
+
+    npix = pupil.shape[0]
+    dx = 1.0 / npix
+    Xs = (xp.arange(npix, dtype=float) - (npix / 2)) * dx
+
+    du = psf_pixelscale_lamD
+    Us = (xp.arange(npsf, dtype=float) - npsf / 2) * du
+
+    xu = xp.outer(Us, Xs)
+    vy = xp.outer(Xs, Us)
+
+    My = xp.exp(-1j*2*np.pi*vy) 
+    Mx = xp.exp(-1j*2*np.pi*xu) 
+
+    return Mx@pupil@My
+
+def mft_reverse(fpwf, psf_pixelscale_lamD, npix):
+    """_summary_
+
+    Parameters
+    ----------
+    fpwf : complex 2D array
+        the focal plane wavefront
+    psf_pixelscale_lamD : scalar
+        the pixelscale of the given focal plane wavefront in terms
+        of lambda/D
+    npix : integer
+        number of pixels across the pupil plane we are 
+        performing the MFT to
+
+    Returns
+    -------
+    complex 2D array
+        the complex wavefront at the pupil plane
+    """
+
+    npsf = fpwf.shape[0]
+    du = psf_pixelscale_lamD
+    Us = (xp.arange(npsf, dtype=float) - npsf / 2) * du
+
+    dx = 1.0 / npix
+    Xs = (xp.arange(npix, dtype=float) - (npix / 2)) * dx
+
+    ux = xp.outer(Xs, Us)
+    yv = xp.outer(Us, Xs)
+
+    My = xp.exp(-1j*2*np.pi*yv) 
+    Mx = xp.exp(-1j*2*np.pi*ux) 
+
+    return Mx@fpwf@My
 
 class CORO():
 
     def __init__(self, 
                  wavelength=None, 
-                 pupil_diam=9.5*u.mm,
-                 lyot_diam=6.5*u.mm, 
                  npsf=128,
                  psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
@@ -91,28 +162,30 @@ class CORO():
                  ):
         
         self.wavelength_c = 650e-9*u.m
-        self.pupil_diam = pupil_diam
+        self.total_pupil_diam = 6.5*u.m
+        self.pupil_diam = 9.5*u.mm
         
         self.wavelength = self.wavelength_c if wavelength is None else wavelength
         
         self.npix = 1000
         self.oversample = 2.048
-        # self.npix = 512
-        # self.oversample = 2
         self.N = int(self.npix*self.oversample)
         self.Nfpm = 4096
 
-        self.WFE = xp.ones((self.N,self.N), dtype=complex) if WFE is None else WFE
-        self.FPM = xp.ones((self.Nfpm,self.Nfpm), dtype=complex) if FPM is None else FPM
+        self.APERTURE = xp.array(fits.getdata('aperture_gray_1000.fits'))
+        self.APMASK = self.APERTURE>0
+        self.WFE = xp.ones((self.npix,self.npix), dtype=complex) if WFE is None else WFE
+        self.LYOT = xp.array(fits.getdata('lyot_90_gray_1000.fits'))
 
         self.pupil_apodizer_ratio = 1
         self.pupil_lyot_mag = 400/500 # pupil size ratios derived from focal lengths of relay OAPs
 
         self.fpm_fl = 500*u.mm
-        self.imaging_fl = 200*u.mm
+        self.imaging_fl = 300*u.mm
 
-        self.lyot_diam = lyot_diam
+        self.lyot_diam = self.pupil_lyot_mag * 0.9 * self.pupil_diam
         self.um_per_lamD = (self.wavelength_c*self.imaging_fl/(self.lyot_diam)).to(u.um)
+        self.as_per_lamD = ((self.wavelength_c/self.total_pupil_diam)*u.radian).to(u.arcsec)
 
         self.npsf = npsf
         if psf_pixelscale_lamD is None: # overrides psf_pixelscale this way
@@ -122,9 +195,6 @@ class CORO():
             self.psf_pixelscale_lamD = psf_pixelscale_lamD
             self.psf_pixelscale = self.psf_pixelscale_lamD * self.um_per_lamD/u.pix
         
-        self.as_per_lamD = ((self.wavelength_c/self.pupil_diam)*u.radian).to(u.arcsec)
-        self.psf_pixelscale_as = self.psf_pixelscale_lamD * self.as_per_lamD * self.oversample
-
         self.dm_inf = os.path.dirname(__file__)+'/inf.fits' if dm_inf is None else dm_inf
         self.dm1_ref = dm1_ref
         self.dm2_ref = dm2_ref
@@ -132,12 +202,10 @@ class CORO():
         self.init_dms()
         self.reset_dms()
 
+        self.use_fpm = False
+
         self.Imax_ref = Imax_ref
         self.reverse_parity = False
-
-        self.det_rotation = detector_rotation
-    
-    
 
     def getattr(self, attr):
         return getattr(self, attr)
@@ -151,69 +219,10 @@ class CORO():
         self._psf_pixelscale = value.to(u.m/u.pix)
         self.psf_pixelscale_lamD = (self._psf_pixelscale / self.um_per_lamD).decompose().value
 
-    # def init_dms(self):
-    #     self.Nact = 34
-    #     self.Nacts = 952
-    #     self.act_spacing = 300e-6*u.m
-    #     self.dm_active_diam = 10.2*u.mm
-    #     self.dm_full_diam = 11.1*u.mm
-        
-    #     self.full_stroke = 1.5e-6*u.m
-        
-    #     self.dm_mask = np.ones((self.Nact,self.Nact), dtype=bool)
-    #     xx = (np.linspace(0, self.Nact-1, self.Nact) - self.Nact/2 + 1/2) * self.act_spacing.to(u.mm).value*2
-    #     x,y = np.meshgrid(xx,xx)
-    #     r = np.sqrt(x**2 + y**2)
-    #     self.dm_mask[r>10.5] = 0 # had to set the threshold to 10.5 instead of 10.2 to include edge actuators
-        
-    #     self.dm_zernikes = ensure_np_array(poppy.zernike.arbitrary_basis(xp.array(self.dm_mask), nterms=15, outside=0))
-        
-    #     self.DM1 = poppy.ContinuousDeformableMirror(dm_shape=(self.Nact,self.Nact), name='DM1', 
-    #                                                 actuator_spacing=self.act_spacing, 
-    #                                                 influence_func=self.dm_inf,
-    #                                                 include_factor_of_two=True, 
-    #                                                 radius=self.dm_full_diam,
-    #                                                )
-        
-    #     self.DM2 = poppy.ContinuousDeformableMirror(dm_shape=(self.Nact,self.Nact), name='DM2', 
-    #                                                 actuator_spacing=self.act_spacing, 
-    #                                                 influence_func=self.dm_inf,
-    #                                                 include_factor_of_two=True, 
-    #                                                 radius=self.dm_full_diam,
-    #                                                )
-
-        
-    # def reset_dms(self):
-    #     self.set_dm1(self.dm1_ref)
-    #     self.set_dm2(self.dm2_ref)
-    
-    # def zero_dm1(self):
-    #     self.set_dm(np.zeros((self.Nact,self.Nact)))
-        
-    # def set_dm1(self, dm_command):
-    #     self.DM1.set_surface(ensure_np_array(dm_command))
-        
-    # def add_dm1(self, dm_command):
-    #     self.DM1.set_surface(ensure_np_array(self.get_dm1()) + ensure_np_array(dm_command))
-        
-    # def get_dm1(self):
-    #     return self.DM1.surface
-
-    # def zero_dm2(self):
-    #     self.set_dm(np.zeros((self.Nact,self.Nact)))
-        
-    # def set_dm2(self, dm_command):
-    #     self.DM2.set_surface(ensure_np_array(dm_command))
-        
-    # def add_dm2(self, dm_command):
-    #     self.DM2.set_surface(ensure_np_array(self.get_dm1()) + ensure_np_array(dm_command))
-        
-    # def get_dm2(self):
-    #     return self.DM2.surface
-
     def init_dms(self):
-        pupil_pxscl = self.pupil_diam.to_value(u.um)/self.npix
-        sampling = 300/pupil_pxscl
+        pupil_pxscl = self.pupil_diam.to_value(u.m)/self.npix
+        sampling = 300e-6/pupil_pxscl
+        print(sampling)
         # sampling = int(np.round(300/pupil_pxscl))
         inf, inf_sampling = dm.make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=sampling, coupling=0.15,)
         self.DM1 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM1')
@@ -280,47 +289,33 @@ class CORO():
         start = time.time()
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         wfs = []
-        self.wf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
-                                         npix=self.npix, oversample=self.oversample)
-        self.wf *= poppy.CircularAperture(radius=self.pupil_diam/2, name='Coronagraph Pupil')
+        self.wf = utils.pad_or_crop(self.APERTURE, self.N).astype(complex)
         if save_wfs: wfs.append(copy.copy(self.wf))
 
-        WFE = poppy.ScalarTransmission(name='WFE Place-holder') if self.WFE is None else self.WFE
-        self.wf = self.wf*WFE
+        self.wf *= utils.pad_or_crop(self.WFE, self.N)
         if save_wfs: wfs.append(copy.copy(self.wf))
 
-        self.wf = self.wf*self.DM1
+        dm1_surf = utils.pad_or_crop(self.DM1.get_surface(), self.N)
+        self.wf *= xp.exp(1j*4*np.pi*dm1_surf/self.wavelength.to_value(u.m))
         if save_wfs: wfs.append(copy.copy(self.wf))
 
-        self.wf.propagate_fresnel(self.d_dm1_dm2)
-        self.wf = self.wf*self.DM2
+        self.wf = prop_as(self.wf, self.wavelength, self.d_dm1_dm2, self.pupil_diam/(self.npix*u.pix))
+        dm2_surf = utils.pad_or_crop(self.DM2.get_surface(), self.N)
+        imshows.imshow2(dm1_surf, dm2_surf)
+        self.wf *= xp.exp(1j*4*np.pi*dm2_surf/self.wavelength.to_value(u.m))
         if save_wfs: wfs.append(copy.copy(self.wf))
 
-        self.wf.propagate_fresnel(-self.d_dm1_dm2)
-        self.wf *= poppy.ScalarTransmission('DM2 at Pupil')
+        self.wf = prop_as(self.wf, self.wavelength, -self.d_dm1_dm2, self.pupil_diam/(self.npix*u.pix))
         if save_wfs: wfs.append(copy.copy(self.wf))
 
-        # WFE = poppy.ScalarTransmission(name='WFE Place-holder') if self.RETRIEVED is None else self.RETRIEVED
-        # self.wf *= WFE
-        # wfs.append(copy.copy(self.wf))
-
-        self.wf.wavefront = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(self.wf.wavefront)))
-        FPM = xp.ones((self.N, self.N)) if self.FPM is None else self.FPM
-        self.wf.wavefront *= FPM
-        self.wf *= poppy.ScalarTransmission(name='FPM')
+        if self.use_fpm:
+            self.wf = self.apply_vortex()
         if save_wfs: wfs.append(copy.copy(self.wf))
 
-        self.wf.wavefront = xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(self.wf.wavefront)))
-        self.wf *= poppy.ScalarTransmission('Lyot Pupil')
+        self.wf *= utils.pad_or_crop(self.LYOT, self.N).astype(complex)
         if save_wfs: wfs.append(copy.copy(self.wf))
 
-        self.wf = self.wf*self.LYOT
-        if save_wfs: wfs.append(copy.copy(self.wf))
-
-        nlamD = self.psf_pixelscale_lamD * self.npsf
-        self.wf.wavefront = poppy.matrixDFT.matrix_dft(utils.pad_or_crop(self.wf.wavefront, self.npix), 
-                                                       nlamD, self.npsf, inverse=False, centering='FFTSTYLE')
-        self.wf *= poppy.ScalarTransmission('Detector')
+        self.wf = mft_forward(utils.pad_or_crop(self.wf, self.npix), self.psf_pixelscale_lamD, self.npsf)
         if self.reverse_parity:
             self.wf.wavefront = xp.rot90(xp.rot90(self.wf.wavefront))
         if save_wfs: wfs.append(copy.copy(self.wf))

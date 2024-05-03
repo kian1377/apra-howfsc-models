@@ -2,6 +2,7 @@ from .math_module import xp, _scipy, ensure_np_array
 from . import utils
 from . import imshows
 from . import dm
+from . import props
 
 import numpy as np
 import scipy
@@ -72,14 +73,14 @@ class CORO():
         self.oap_diams = 25.4*u.mm
         self.init_opds()
 
-        self.fl_oap1 = 200*u.mm
-        self.fl_oap2 = 200*u.mm
+        self.fl_oap1 = 250*u.mm
+        self.fl_oap2 = 250*u.mm
         self.fl_oap3 = 500*u.mm
         self.fl_oap4 = 400*u.mm
         self.fl_oap5 = 400*u.mm
         self.fl_oap6 = 400*u.mm
-        self.fl_oap7 = 200*u.mm
-        self.fl_oap8 = 200*u.mm
+        self.fl_oap7 = 250*u.mm
+        self.fl_oap8 = 250*u.mm
         self.fl_oap9 = 300*u.mm
 
         self.d_pupil_oap1 = self.fl_oap1
@@ -119,7 +120,7 @@ class CORO():
                                              opd=xp.angle(WFE)*self.wavelength_c.to_value(u.m)/(2*np.pi),
                                              pixelscale=self.pupil_diam/(self.npix*u.pix))
         self.LYOT = poppy.ArrayOpticalElement(transmission=LYOT, 
-                                              pixelscale=400/500 * self.pupil_diam/(self.npix*u.pix))
+                                              pixelscale=self.lyot_pupil_diam/(self.npix*u.pix))
 
         self.um_per_lamD = (self.wavelength_c*self.fl_oap9/(self.lyot_diam)).to(u.um)
 
@@ -132,6 +133,8 @@ class CORO():
             self.psf_pixelscale = self.psf_pixelscale_lamD * self.um_per_lamD/u.pix
         
         self.Imax_ref = Imax_ref
+
+        self.use_fpm = False
 
         self.init_dms()
         self.dm1_ref = dm1_ref
@@ -242,7 +245,7 @@ class CORO():
         oap3 = poppy.QuadraticLens(self.fl_oap3, name='OAP3')
         oap4 = poppy.QuadraticLens(self.fl_oap4, name='OAP4')
         oap5 = poppy.QuadraticLens(self.fl_oap5, name='OAP5')
-        oap6 = poppy.QuadraticLens(self.fl_oap6, name='OAP6')
+        # oap6 = poppy.QuadraticLens(self.fl_oap6, name='OAP6')
         oap7 = poppy.QuadraticLens(self.fl_oap7, name='OAP7')
         oap8 = poppy.QuadraticLens(self.fl_oap8, name='OAP8')
         oap9 = poppy.QuadraticLens(self.fl_oap9, name='OAP9')
@@ -316,41 +319,67 @@ class CORO():
     def calc_wfs(self, quiet=False):
         start = time.time()
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
-        self.init_inwave()
-        _, wfs = self.fosys.calc_psf(inwave=self.inwave, normalize='none', return_intermediates=True)
-        if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-        
-        return wfs
-    
-    def calc_psf(self, quiet=True): # method for getting the PSF in photons
-        start = time.time()
-        if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_fosys()
         self.init_inwave()
-        _, wf = self.fosys_pupil_fpm.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
-        fpm_wf = copy.deepcopy(wf[0])
-        lyot_wfarr = poppy.accel_math.fft_2d(fpm_wf.wavefront, fftshift=True, forward=False)
-        # return fpm_wf
+        _, wfs1 = self.fosys_pupil_fpm.calc_psf(inwave=self.inwave, return_intermediates=True)
+        fpm_wf = copy.deepcopy(wfs1[-1])
 
-        # back propagate the lyot inwave to the OAP6 plane
-        # apply the OAP6 surface roughness phasor
-        # propagate back to the Lyot pupil plane
         lyot_inwave = poppy.FresnelWavefront(beam_radius=self.lyot_pupil_diam/2, wavelength=self.wavelength,
                                              npix=self.npix, oversample=self.oversample,)
-        lyot_inwave.wavefront = lyot_wfarr
-        imshows.imshow2(lyot_inwave.amplitude, lyot_inwave.phase, pxscl=lyot_inwave.pixelscale.to(u.mm/u.pix), npix=self.npix)
-        _, wf = self.fosys_lyot_image.calc_psf(inwave=lyot_inwave, 
-                                               normalize='none', return_final=True,)
-        if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
-            
-        psf = wf[0].wavefront
-        psf /= np.sqrt(self.Imax_ref)
-        return psf
-    
-    def snap(self): # method for getting the PSF in photons
-        fpwf = self.calc_psf()
-        image = xp.abs(fpwf)**2
+        lyot_wfarr = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(fpm_wf.wavefront))) * self.npix * 2
 
-        return image
+        if self.use_fpm:
+            lyot_wfarr = props.apply_vortex(lyot_wfarr, Nfpm=self.Nfpm, N=self.N, plot=False) # apply the vortex mask if using the FPM
+
+        if self.use_opds:
+            # back propagate the lyot pupil wavefront to the OAP6 plane
+            lyot_wfarr = props.ang_spec(lyot_wfarr, self.wavelength, -self.d_oap6_lyot, self.lyot_pupil_diam/(self.npix*u.pix))
+            # apply the OAP6 surface roughness phasor
+            lyot_wfarr *= self.oap6_opd.get_phasor(lyot_inwave)
+            # propagate back to the Lyot pupil plane
+            lyot_wfarr = props.ang_spec(lyot_wfarr, self.wavelength, self.d_oap6_lyot, self.lyot_pupil_diam/(self.npix*u.pix))
+
+        lyot_inwave.wavefront = copy.deepcopy(lyot_wfarr)
+
+        # imshows.imshow2(lyot_inwave.amplitude, lyot_inwave.phase, pxscl=lyot_inwave.pixelscale.to(u.mm/u.pix), npix=self.npix)
+        _, wfs2 = self.fosys_lyot_image.calc_psf(normalize='none', return_intermediates=True,
+                                                 inwave=lyot_inwave,
+                                                 )
+        wfs2[-1].wavefront /= xp.sqrt(self.Imax_ref)
+        if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
+
+        return wfs1+wfs2
+    
+    def calc_wf(self): # method for getting the PSF in photons
+        self.init_fosys()
+        self.init_inwave()
+        _, wfs1 = self.fosys_pupil_fpm.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
+        fpm_wf = copy.deepcopy(wfs1[-1])
+
+        lyot_inwave = poppy.FresnelWavefront(beam_radius=self.lyot_pupil_diam/2, wavelength=self.wavelength,
+                                             npix=self.npix, oversample=self.oversample,)
+        lyot_wfarr = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(fpm_wf.wavefront))) * self.npix * 2
+
+        if self.use_fpm:
+            lyot_wfarr = props.apply_vortex(lyot_wfarr, Nfpm=self.Nfpm, N=self.N, plot=False) # apply the vortex mask if using the FPM
+
+        if self.use_opds:
+            # back propagate the lyot pupil wavefront to the OAP6 plane
+            lyot_wfarr = props.ang_spec(lyot_wfarr, self.wavelength, -self.d_oap6_lyot, self.lyot_pupil_diam/(self.npix*u.pix))
+            # apply the OAP6 surface roughness phasor
+            lyot_wfarr *= self.oap6_opd.get_phasor(lyot_inwave)
+            # propagate back to the Lyot pupil plane
+            lyot_wfarr = props.ang_spec(lyot_wfarr, self.wavelength, self.d_oap6_lyot, self.lyot_pupil_diam/(self.npix*u.pix))
+
+        lyot_inwave.wavefront = copy.deepcopy(lyot_wfarr)
+
+        _, wfs2 = self.fosys_lyot_image.calc_psf(normalize='none', return_final=True, return_intermediates=False,
+                                                 inwave=lyot_inwave,
+                                                 )
+        
+        return wfs2[-1].wavefront/xp.sqrt(self.Imax_ref)
+    
+    def snap(self): # method for getting the final image
+        return xp.abs(self.calc_wf())**2
     
         

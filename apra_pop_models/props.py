@@ -107,9 +107,9 @@ def mft_forward(pupil, psf_pixelscale_lamD, npsf):
     My = xp.exp(-1j*2*np.pi*vy) 
     Mx = xp.exp(-1j*2*np.pi*xu) 
 
-    # norm_coeff = np.sqrt( (nlamDY * nlamDX) / (npupY * npupX * npixY * npixX) )
-    # norm_coeff = np.sqrt( psf_pixelscale_lamD / (npix) )
-    norm_coeff = psf_pixelscale_lamD/npix 
+    norm_coeff = psf_pixelscale_lamD/npix
+
+    # return Mx, My
 
     return Mx@pupil@My * norm_coeff
 

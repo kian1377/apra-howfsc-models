@@ -186,11 +186,8 @@ class CORO():
         if save_wfs: wfs.append(copy.copy(self.wf))
         
         Nlyot = int(np.round(0.9 * self.npix))
-        imshows.imshow2(xp.abs(utils.pad_or_crop(self.wf, self.npix)), xp.abs(utils.pad_or_crop(self.wf, Nlyot)))
-        
         self.wf = props.mft_forward(utils.pad_or_crop(self.wf, Nlyot), self.psf_pixelscale_lamD, self.npsf)/xp.sqrt(self.Imax_ref)
-        if self.reverse_parity:
-            self.wf.wavefront = xp.rot90(xp.rot90(self.wf.wavefront))
+        if self.reverse_parity: self.wf = xp.rot90(xp.rot90(self.wf))
         if save_wfs: wfs.append(copy.copy(self.wf))
 
         if save_wfs:
@@ -198,18 +195,12 @@ class CORO():
         else:
             return self.wf
     
-    def calc_psf(self):
-
-        # fpwf = self.calc_wfs(save_wfs=False, quiet=True).wavefront
+    def calc_wf(self):
         fpwf = self.calc_wfs(save_wfs=False, quiet=True)
-
         return fpwf
     
-    def snap(self): # method for getting the PSF in photons
-        
-        # image = self.calc_wfs(save_wfs=False, quiet=True).intensity
+    def snap(self):
         image = xp.abs(self.calc_wfs(save_wfs=False, quiet=True))**2
-
         return image
     
 

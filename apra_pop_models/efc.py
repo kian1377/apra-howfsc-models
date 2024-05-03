@@ -49,7 +49,7 @@ def calibrate(sysi,
 
             if scc_fun is None: # using the model to build the Jacobian
                 sysi.add_dm(amp*mode)
-                wavefront = sysi.calc_psf()
+                wavefront = sysi.calc_wf()
                 response += amp * wavefront.flatten() / (2*np.var(amps))
                 sysi.add_dm(-amp*mode)
             elif scc_fun is not None and scc_params is not None:
@@ -169,7 +169,7 @@ def run(sysi,
             electric_field = est_fun(sysi, **est_params)
         else:
             print('Using model to compute electric field')
-            electric_field = sysi.calc_psf() # no PWP, just use model
+            electric_field = sysi.calc_wf() # no PWP, just use model
         
         efield_ri = xp.zeros(2*Nmask)
 

@@ -14,139 +14,6 @@ import copy
 
 import poppy
 
-# def make_vortex_phase_mask(npix, charge=6, 
-#                            grid='odd', 
-#                            singularity=None, 
-#                            focal_length=500*u.mm, pupil_diam=9.5*u.mm, wavelength=650*u.nm):
-#     if grid=='odd':
-#         x = xp.linspace(-npix//2, npix//2-1, npix)
-#     elif grid=='even':
-#         x = xp.linspace(-npix//2, npix//2-1, npix) + 1/2
-#     x,y = xp.meshgrid(x,x)
-#     th = xp.arctan2(y,x)
-
-#     phasor = xp.exp(1j*charge*th)
-    
-#     if singularity is not None:
-# #         sing*D/(focal_length*lam)
-#         r = xp.sqrt((x-1/2)**2 + (y-1/2)**2)
-#         mask = r>(singularity*pupil_diam/(focal_length*wavelength)).decompose().value
-#         phasor *= mask
-    
-#     return phasor
-
-# def prop_as(wavefront, wavelength, distance, pixelscale):
-#     """Propagate a wavefront a given distance via the angular spectrum method. 
-
-#     Parameters
-#     ----------
-#     wavefront : complex 2D array
-#         the input wavefront
-#     wavelength : astropy quantity
-#         the wavelength of the wavefront
-#     distance : astropy quantity
-#         distance to propagate wavefront
-#     pixelscale : astropy quantity
-#         pixelscale in physical units of the wavefront
-
-#     Returns
-#     -------
-#     complex 2D array
-#         the propagated wavefront
-#     """
-#     n = wavefront.shape[0]
-
-#     delkx = 2*np.pi/(n*pixelscale.to_value(u.m/u.pix))
-#     kxy = (xp.linspace(-n/2, n/2-1, n) + 1/2)*delkx
-#     k = 2*np.pi/wavelength.to_value(u.m)
-#     kx, ky = xp.meshgrid(kxy,kxy)
-
-#     wf_as = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(wavefront)))
-    
-#     kz = xp.sqrt(k**2 - kx**2 - ky**2 + 0j)
-#     tf = xp.exp(1j*kz*distance.to_value(u.m))
-
-#     prop_wf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(wf_as * tf)))
-#     kz = 0.0
-#     tf = 0.0
-
-#     return prop_wf
-
-# def mft_forward(pupil, psf_pixelscale_lamD, npsf):
-#     """_summary_
-
-#     Parameters
-#     ----------
-#     pupil : complex 2D array
-#         the pupil plane wavefront
-#     psf_pixelscale_lamD : scalar
-#         the pixelscale of the desired focal plane wavefront in terms
-#         of lambda/D
-#     npsf : integer
-#         the size of the desired focal plane in pixels
-
-#     Returns
-#     -------
-#     complex 2D array
-#         the complex wavefront at the focal plane
-#     """
-
-#     npix = pupil.shape[0]
-#     dx = 1.0 / npix
-#     Xs = (xp.arange(npix, dtype=float) - (npix / 2)) * dx
-
-#     du = psf_pixelscale_lamD
-#     Us = (xp.arange(npsf, dtype=float) - npsf / 2) * du
-
-#     xu = xp.outer(Us, Xs)
-#     vy = xp.outer(Xs, Us)
-
-#     My = xp.exp(-1j*2*np.pi*vy) 
-#     Mx = xp.exp(-1j*2*np.pi*xu) 
-
-#     # norm_coeff = np.sqrt( (nlamDY * nlamDX) / (npupY * npupX * npixY * npixX) )
-#     # norm_coeff = np.sqrt( psf_pixelscale_lamD / (npix) )
-#     norm_coeff = psf_pixelscale_lamD/npix 
-
-#     return Mx@pupil@My * norm_coeff
-
-# def mft_reverse(fpwf, psf_pixelscale_lamD, npix):
-#     """_summary_
-
-#     Parameters
-#     ----------
-#     fpwf : complex 2D array
-#         the focal plane wavefront
-#     psf_pixelscale_lamD : scalar
-#         the pixelscale of the given focal plane wavefront in terms
-#         of lambda/D
-#     npix : integer
-#         number of pixels across the pupil plane we are 
-#         performing the MFT to
-
-#     Returns
-#     -------
-#     complex 2D array
-#         the complex wavefront at the pupil plane
-#     """
-
-#     npsf = fpwf.shape[0]
-#     du = psf_pixelscale_lamD
-#     Us = (xp.arange(npsf, dtype=float) - npsf / 2) * du
-
-#     dx = 1.0 / npix
-#     Xs = (xp.arange(npix, dtype=float) - (npix / 2)) * dx
-
-#     ux = xp.outer(Xs, Us)
-#     yv = xp.outer(Us, Xs)
-
-#     My = xp.exp(-1j*2*np.pi*yv) 
-#     Mx = xp.exp(-1j*2*np.pi*ux) 
-
-#     norm_coeff = psf_pixelscale_lamD/npix 
-
-#     return Mx@fpwf@My * norm_coeff
-
 class CORO():
 
     def __init__(self, 
@@ -317,8 +184,11 @@ class CORO():
 
         self.wf *= utils.pad_or_crop(self.LYOT, self.N).astype(complex)
         if save_wfs: wfs.append(copy.copy(self.wf))
-
-        self.wf = props.mft_forward(utils.pad_or_crop(self.wf, self.npix), self.psf_pixelscale_lamD, self.npsf)/xp.sqrt(self.Imax_ref)
+        
+        Nlyot = int(np.round(0.9 * self.npix))
+        imshows.imshow2(xp.abs(utils.pad_or_crop(self.wf, self.npix)), xp.abs(utils.pad_or_crop(self.wf, Nlyot)))
+        
+        self.wf = props.mft_forward(utils.pad_or_crop(self.wf, Nlyot), self.psf_pixelscale_lamD, self.npsf)/xp.sqrt(self.Imax_ref)
         if self.reverse_parity:
             self.wf.wavefront = xp.rot90(xp.rot90(self.wf.wavefront))
         if save_wfs: wfs.append(copy.copy(self.wf))

@@ -15,6 +15,7 @@ def run_pwp_bp(sysi,
                control_mask, 
                probes,
                use='J', jacobian=None, model=None, 
+               reg_cond=1e-3,
                plot=False,
                plot_est=False):
     """ 
@@ -109,7 +110,7 @@ def run_pwp_bp(sysi,
         delI = I_diff[:, i]
         M = 4*xp.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
         # print(M.shape)
-        Minv = xp.linalg.pinv(M.T@M, 1e-2)@M.T
+        Minv = xp.linalg.pinv(M.T@M, reg_cond)@M.T
 
         # Trying to solve the system of delI = M @ E_est
         est = Minv.dot(delI)

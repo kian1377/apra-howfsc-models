@@ -9,6 +9,7 @@ import astropy.units as u
 from astropy.io import fits
 from pathlib import Path
 import time
+import copy
 
 import poppy
 from poppy.poppy_core import PlaneType
@@ -41,33 +42,30 @@ class CORO():
 
     def __init__(self,
                  wavelength=None, 
-                 pupil_diam=9.5*u.mm,
-                 lyot_diam=6.5*u.mm, 
-                 npix=512, 
-                 oversample=4,
-                 npsf=128,
-                #  psf_pixelscale=4.2763158e-6*u.m/u.pix,
+                 npsf=128, 
                  psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
-                 detector_rotation=0, 
                  dm1_ref=np.zeros((34,34)),
                  dm2_ref=np.zeros((34,34)),
                  d_dm1_dm2=277*u.mm, 
                  Imax_ref=1,
-                 TELEWFE=None,
-                 FPM=None, 
-                 use_lyot_stop=True,
+                 WFE=None,
                  use_opds=False,
                  use_aps=False,
                 ):
         
         self.wavelength_c = 650e-9*u.m
+        self.total_pupil_diam = 6.5*u.m
+        self.pupil_diam = 9.5*u.mm
+        self.lyot_pupil_diam = 400/500 * self.pupil_diam
+        self.lyot_diam = 400/500 * 0.9 * self.pupil_diam
+        
         self.wavelength = self.wavelength_c if wavelength is None else wavelength
-        self.pupil_diam = pupil_diam
 
-        self.npix = npix
-        self.oversample = oversample
+        self.npix = 1000
+        self.oversample = 2.048
         self.N = int(self.npix*self.oversample)
+        self.Nfpm = 4096
         
         self.use_opds = use_opds
         self.use_aps = use_aps
@@ -82,7 +80,7 @@ class CORO():
         self.fl_oap6 = 400*u.mm
         self.fl_oap7 = 200*u.mm
         self.fl_oap8 = 200*u.mm
-        self.fl_oap9 = 200*u.mm
+        self.fl_oap9 = 300*u.mm
 
         self.d_pupil_oap1 = self.fl_oap1
         self.d_oap1_ifp1 = self.fl_oap1
@@ -110,21 +108,20 @@ class CORO():
         
         # self.det_rotation = detector_rotation
         
-        self.PUPIL = poppy.CircularAperture(radius=self.pupil_diam/2)
-        wf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength_c,
-                                    npix=self.npix, oversample=1)
-        self.pupil_mask = self.PUPIL.get_transmission(wf)>0
+        APERTURE = xp.array(fits.getdata('aperture_gray_1000.fits'))
+        self.APMASK = APERTURE>0
+        WFE = xp.ones((self.npix,self.npix), dtype=complex) if WFE is None else WFE
+        LYOT = xp.array(fits.getdata('lyot_90_gray_1000.fits'))
         
-        self.TELEWFE = poppy.ScalarTransmission('WFE from Telescope') if TELEWFE is None else TELEWFE 
-
-        self.FPM = poppy.ScalarTransmission('FPM') if FPM is None else FPM
-
-        self.lyot_diam = lyot_diam
-        self.use_lyot_stop = use_lyot_stop
-        self.pupil_lyot_mag = self.fl_oap4.to_value(u.mm)/self.fl_oap3.to_value(u.mm)
+        self.APERTURE = poppy.ArrayOpticalElement(transmission=APERTURE, 
+                                                  pixelscale=self.pupil_diam/(self.npix*u.pix))
+        self.WFE = poppy.ArrayOpticalElement(transmission=xp.abs(WFE), 
+                                             opd=xp.angle(WFE)*self.wavelength_c.to_value(u.m)/(2*np.pi),
+                                             pixelscale=self.pupil_diam/(self.npix*u.pix))
+        self.LYOT = poppy.ArrayOpticalElement(transmission=LYOT, 
+                                              pixelscale=400/500 * self.pupil_diam/(self.npix*u.pix))
 
         self.um_per_lamD = (self.wavelength_c*self.fl_oap9/(self.lyot_diam)).to(u.um)
-        self.LYOT = poppy.CircularAperture(radius=self.lyot_diam/2, name='Lyot Stop')
 
         self.npsf = npsf
         if psf_pixelscale_lamD is None: # overrides psf_pixelscale this way
@@ -148,9 +145,10 @@ class CORO():
         return getattr(self, attr)
 
     def init_dms(self):
-        pupil_pxscl = self.pupil_diam.to_value(u.um)/self.npix
-        sampling = 300/pupil_pxscl
-        # sampling = int(np.round(300/pupil_pxscl))
+        act_spacing = 300e-6*u.m
+        pupil_pxscl = self.pupil_diam.to_value(u.m)/self.npix
+        sampling = act_spacing.to_value(u.m)/pupil_pxscl
+        print('influence function sampling', sampling)
         inf, inf_sampling = dm.make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=sampling, coupling=0.15,)
         self.DM1 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM1')
         self.DM2 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM2')
@@ -252,8 +250,8 @@ class CORO():
         # define FresnelOpticalSystem and add optics
         fosys = poppy.FresnelOpticalSystem(pupil_diameter=self.pupil_diam, npix=self.npix, beam_ratio=1/self.oversample)
         
-        fosys.add_optic(self.PUPIL)
-        fosys.add_optic(self.TELEWFE)
+        fosys.add_optic(self.APERTURE)
+        fosys.add_optic(self.WFE)
         fosys.add_optic(oap1, self.d_pupil_oap1)
         if self.use_opds: fosys.add_optic(self.oap1_opd)
         fosys.add_optic(poppy.ScalarTransmission('IFP1'), self.d_oap1_ifp1)
@@ -277,31 +275,36 @@ class CORO():
         fosys.add_optic(poppy.ScalarTransmission('Apodizer Plane'), self.d_qwp1_apodizer)
         fosys.add_optic(oap5, self.d_apodizer_oap5)
         if self.use_opds: fosys.add_optic(self.oap5_opd)
-        fosys.add_optic(self.FPM, self.d_oap5_fpm)
-        fosys.add_optic(oap6, self.d_fpm_oap6)
-        if self.use_opds: fosys.add_optic(self.oap6_opd)
-        fosys.add_optic(poppy.ScalarTransmission('Lyot Pupil'), self.d_oap6_lyot)
-        fosys.add_optic(self.LYOT,)
-        fosys.add_optic(oap7, self.d_lyot_oap7)
+        fosys.add_optic(poppy.ScalarTransmission(name='FPM place-holder'), self.d_oap5_fpm)
+        self.fosys_pupil_fpm = fosys
+
+        fosys2 = poppy.FresnelOpticalSystem(pupil_diameter=self.lyot_pupil_diam, npix=self.npix, beam_ratio=1/self.oversample)
+
+        # fosys2.add_optic(oap6, self.d_fpm_oap6)
+        # if self.use_opds: fosys.add_optic(self.oap6_opd)
+        # fosys2.add_optic(poppy.ScalarTransmission('Lyot Pupil'), self.d_oap6_lyot)
+        fosys2.add_optic(poppy.ScalarTransmission('Lyot Pupil'))
+        fosys2.add_optic(self.LYOT,)
+        fosys2.add_optic(oap7, self.d_lyot_oap7)
         if self.use_opds: fosys.add_optic(self.oap7_opd)
-        fosys.add_optic(poppy.ScalarTransmission('Field Stop'), self.d_oap7_fieldstop)
-        fosys.add_optic(oap8, self.d_fieldstop_oap8)
+        fosys2.add_optic(poppy.ScalarTransmission('Field Stop'), self.d_oap7_fieldstop)
+        fosys2.add_optic(oap8, self.d_fieldstop_oap8)
         if self.use_opds: fosys.add_optic(self.oap8_opd)
         if self.use_opds: 
-            fosys.add_optic(self.qwp2_opd, self.d_oap8_qwp2)
+            fosys2.add_optic(self.qwp2_opd, self.d_oap8_qwp2)
         else:
-            fosys.add_optic(poppy.ScalarTransmission('QWP2'), self.d_oap8_qwp2)
+            fosys2.add_optic(poppy.ScalarTransmission('QWP2'), self.d_oap8_qwp2)
         if self.use_opds:
-            fosys.add_optic(self.lp2_opd, self.d_qwp2_lp2)
+            fosys2.add_optic(self.lp2_opd, self.d_qwp2_lp2)
         else:
-            fosys.add_optic(poppy.ScalarTransmission('LP2'), self.d_qwp2_lp2)
-        fosys.add_optic(poppy.ScalarTransmission('Filter'), self.d_lp2_filter)
-        fosys.add_optic(oap9, self.d_filter_oap9)
+            fosys2.add_optic(poppy.ScalarTransmission('LP2'), self.d_qwp2_lp2)
+        fosys2.add_optic(poppy.ScalarTransmission('Filter'), self.d_lp2_filter)
+        fosys2.add_optic(oap9, self.d_filter_oap9)
         if self.use_opds: fosys.add_optic(self.oap9_opd)
-        fosys.add_optic(poppy.Detector(pixelscale=self.psf_pixelscale, fov_pixels=self.npsf, interp_order=3),
-                        distance=self.fl_oap9)
-        
-        self.fosys = fosys
+        fosys2.add_optic(poppy.Detector(pixelscale=self.psf_pixelscale, fov_pixels=self.npsf, interp_order=3),
+                         distance=self.fl_oap9)
+
+        self.fosys_lyot_image = fosys2
 
         return
         
@@ -324,8 +327,20 @@ class CORO():
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_fosys()
         self.init_inwave()
-        self.pupil_mask = self.PUPIL.get_transmission(self.inwave)>0
-        _, wf = self.fosys.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
+        _, wf = self.fosys_pupil_fpm.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
+        fpm_wf = copy.deepcopy(wf[0])
+        lyot_wfarr = poppy.accel_math.fft_2d(fpm_wf.wavefront, fftshift=True, forward=False)
+        # return fpm_wf
+
+        # back propagate the lyot inwave to the OAP6 plane
+        # apply the OAP6 surface roughness phasor
+        # propagate back to the Lyot pupil plane
+        lyot_inwave = poppy.FresnelWavefront(beam_radius=self.lyot_pupil_diam/2, wavelength=self.wavelength,
+                                             npix=self.npix, oversample=self.oversample,)
+        lyot_inwave.wavefront = lyot_wfarr
+        imshows.imshow2(lyot_inwave.amplitude, lyot_inwave.phase, pxscl=lyot_inwave.pixelscale.to(u.mm/u.pix), npix=self.npix)
+        _, wf = self.fosys_lyot_image.calc_psf(inwave=lyot_inwave, 
+                                               normalize='none', return_final=True,)
         if not quiet: print('PSF calculated in {:.3f}s'.format(time.time()-start))
             
         psf = wf[0].wavefront

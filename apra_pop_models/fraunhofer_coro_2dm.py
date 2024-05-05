@@ -184,10 +184,11 @@ class CORO():
 
         self.wf *= utils.pad_or_crop(self.LYOT, self.N).astype(complex)
         if save_wfs: wfs.append(copy.copy(self.wf))
-        
+
+        if self.reverse_parity: self.wf = xp.rot90(xp.rot90(self.wf))
+
         Nlyot = int(np.round(0.9 * self.npix))
         self.wf = props.mft_forward(utils.pad_or_crop(self.wf, Nlyot), self.psf_pixelscale_lamD, self.npsf)/xp.sqrt(self.Imax_ref)
-        if self.reverse_parity: self.wf = xp.rot90(xp.rot90(self.wf))
         if save_wfs: wfs.append(copy.copy(self.wf))
 
         if save_wfs:

@@ -143,6 +143,8 @@ class CORO():
         self.set_dm2(dm2_ref)
         self.init_fosys()
 
+        self.return_lyot = False
+
     
     def getattr(self, attr):
         return getattr(self, attr)
@@ -327,6 +329,9 @@ class CORO():
         lyot_inwave = poppy.FresnelWavefront(beam_radius=self.lyot_pupil_diam/2, wavelength=self.wavelength,
                                              npix=self.npix, oversample=self.oversample,)
         lyot_wfarr = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(fpm_wf.wavefront))) * self.npix * 2
+        
+        if self.return_lyot:
+            return lyot_wfarr
 
         if self.use_fpm:
             lyot_wfarr = props.apply_vortex(lyot_wfarr, Nfpm=self.Nfpm, N=self.N, plot=False) # apply the vortex mask if using the FPM

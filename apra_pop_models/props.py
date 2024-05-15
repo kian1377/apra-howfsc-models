@@ -70,10 +70,10 @@ def ang_spec(wavefront, wavelength, distance, pixelscale):
     tf = xp.exp(1j*kz*distance.to_value(u.m))
 
     prop_wf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(wf_as * tf)))
-    kz = 0.0
-    tf = 0.0
+    # kz = 0.0
+    # tf = 0.0
 
-    return prop_wf
+    return wf_as, tf, prop_wf
 
 def mft_forward(pupil, psf_pixelscale_lamD, npsf):
     """_summary_

@@ -27,12 +27,11 @@ class CORO():
                  d_dm1_dm2=277*u.mm, 
                  Imax_ref=1,
                  WFE=None,
-                 FPM=None,
                  ):
         
         self.wavelength_c = 650e-9*u.m
         self.total_pupil_diam = 6.5*u.m
-        self.pupil_diam = 9.5*u.mm
+        self.pupil_diam = 20*u.mm
         
         self.wavelength = self.wavelength_c if wavelength is None else wavelength
         
@@ -50,7 +49,7 @@ class CORO():
         self.pupil_lyot_mag = 400/500 # pupil size ratios derived from focal lengths of relay OAPs
 
         self.fpm_fl = 500*u.mm
-        self.imaging_fl = 300*u.mm
+        self.imaging_fl = 500*u.mm
 
         self.lyot_diam = self.pupil_lyot_mag * 0.9 * self.pupil_diam
         self.um_per_lamD = (self.wavelength_c*self.imaging_fl/(self.lyot_diam)).to(u.um)

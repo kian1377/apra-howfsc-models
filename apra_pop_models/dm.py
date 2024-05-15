@@ -188,7 +188,7 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
             surf = xp.fft.ifft2(fourier_surf).real
             # surf = utils.pad_or_crop(surf, int(np.ceil(Nsurf//oversample + inf_sampling)))
 
-            return surf, fourier_inf_fun, fourier_surf
+            return surf
 
         elif self.inf_matrix is not None:
             surf = self.inf_matrix.dot(self.actuators).reshape(self.inf_cube.shape[1], self.inf_cube.shape[1])

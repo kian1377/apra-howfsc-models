@@ -73,7 +73,7 @@ def ang_spec(wavefront, wavelength, distance, pixelscale):
     # kz = 0.0
     # tf = 0.0
 
-    return wf_as, tf, prop_wf
+    return prop_wf
 
 def mft_forward(pupil, psf_pixelscale_lamD, npsf):
     """_summary_

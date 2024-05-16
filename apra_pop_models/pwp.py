@@ -96,7 +96,7 @@ def run_pwp_bp(sysi,
             # print(xp)
             # print(type(E_probe_2d), type(dark_mask))
             xp.place(E_probe_2d, mask=control_mask, vals=E_probe)
-            imshows.imshow2(xp.abs(E_probe_2d), xp.angle(E_probe_2d),
+            imshows.imshow2(xp.abs(E_probe_2d)*control_mask, xp.angle(E_probe_2d)*control_mask,
                             f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$')
             
         E_probes[i, ::2] = E_probe.real

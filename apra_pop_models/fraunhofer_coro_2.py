@@ -21,17 +21,17 @@ class CORO():
                  npsf=128,
                  psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
-                 dm1_ref=np.zeros((34,34)),
-                 dm2_ref=np.zeros((34,34)),
+                 dm1_ref=np.zeros((68,68)),
+                 dm2_ref=np.zeros((68,68)),
                  dm_inf=None, # defaults to inf.fits
-                 d_dm1_dm2=277*u.mm, 
+                 d_dm1_dm2=1110.7692*u.mm, 
                  Imax_ref=1,
                  WFE=None,
                  ):
         
         self.wavelength_c = 650e-9*u.m
         self.total_pupil_diam = 6.5*u.m
-        self.pupil_diam = 20*u.mm
+        self.pupil_diam = 19*u.mm
         
         self.wavelength = self.wavelength_c if wavelength is None else wavelength
         
@@ -49,7 +49,7 @@ class CORO():
         self.pupil_lyot_mag = 400/500 # pupil size ratios derived from focal lengths of relay OAPs
 
         self.fpm_fl = 500*u.mm
-        self.imaging_fl = 500*u.mm
+        self.imaging_fl = 300*u.mm
 
         self.lyot_diam = self.pupil_lyot_mag * 0.9 * self.pupil_diam
         self.um_per_lamD = (self.wavelength_c*self.imaging_fl/(self.lyot_diam)).to(u.um)
@@ -89,14 +89,20 @@ class CORO():
 
     def init_dms(self):
         act_spacing = 300e-6*u.m
+        self.Nact = 68
         pupil_pxscl = self.pupil_diam.to_value(u.m)/self.npix
         sampling = act_spacing.to_value(u.m)/pupil_pxscl
         print('influence function sampling', sampling)
-        inf, inf_sampling = dm.make_gaussian_inf_fun(act_spacing=act_spacing, sampling=sampling, coupling=0.15,)
-        self.DM1 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM1')
-        self.DM2 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM2')
 
-        self.Nact = self.DM1.Nact
+        inf, inf_sampling = dm.make_gaussian_inf_fun(act_spacing=act_spacing, sampling=sampling, coupling=0.15,)
+
+        self.DM1 = dm.DeformableMirror(Nact=self.Nact, act_spacing=act_spacing, pupil_diam=22*u.mm, 
+                                       inf_fun=inf, inf_sampling=sampling, 
+                                       name='DM1',)
+        self.DM2 = dm.DeformableMirror(Nact=self.Nact, act_spacing=act_spacing, pupil_diam=22*u.mm, 
+                                       inf_fun=inf, inf_sampling=sampling, 
+                                       name='DM2',)
+
         self.Nacts = self.DM1.Nacts
         self.act_spacing = self.DM1.act_spacing
         self.dm_active_diam = self.DM1.active_diam
@@ -168,9 +174,9 @@ class CORO():
         if save_wfs: wfs.append(copy.copy(self.wf))
 
         self.wf = props.ang_spec(self.wf, self.wavelength, self.d_dm1_dm2, self.pupil_diam/(self.npix*u.pix))
+        # print(self.wf)
         dm2_surf = utils.pad_or_crop(self.DM2.get_surface(), self.N)
-        # imshows.imshow1(dm2_surf)
-
+        # print(dm2_surf)
         self.wf *= xp.exp(1j*4*np.pi*dm2_surf/self.wavelength.to_value(u.m))
         if save_wfs: wfs.append(copy.copy(self.wf))
 

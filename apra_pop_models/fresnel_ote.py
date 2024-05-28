@@ -60,6 +60,7 @@ class OTE():
         
         self.defocus = 0.0*u.mm
         
+        self.calc_pupil = False
         self.use_opds = use_opds
         self.init_opds()
 
@@ -69,35 +70,48 @@ class OTE():
         return getattr(self, attr)
     
     def init_opds(self, seeds=None):
-        
         seed1, seed2, seed3, seed4 = (10,20,30,40)
         
         m1wf = poppy.FresnelWavefront(beam_radius=self.m1_diam/2, wavelength=self.wavelength_c, npix=self.npix, oversample=1)
         m1_opd = poppy.StatisticalPSDWFE(index=self.index, wfe=40*u.nm, radius=self.m1_diam/2, seed=seed1).get_opd(m1wf)
-        self.m1_opd = poppy.ArrayOpticalElement(opd=m1_opd, pixelscale=m1wf.pixelscale)
+        self.m1_opd = poppy.ArrayOpticalElement(opd=m1_opd, pixelscale=m1wf.pixelscale, name='M1 OPD')
         
         m2wf = poppy.FresnelWavefront(beam_radius=self.m2_footprint_diam/2, wavelength=self.wavelength_c, npix=4096, oversample=1)
-        m2_opd = poppy.StatisticalPSDWFE(index=self.index, wfe=30*u.nm, radius=self.m2_diam/2, seed=seed2).get_opd(m2wf)
-        self.m2_opd = poppy.ArrayOpticalElement(opd=m2_opd, pixelscale=m2wf.pixelscale)
+        m2_opd = poppy.StatisticalPSDWFE(index=self.index, wfe=20*u.nm, radius=self.m2_diam/2, seed=seed2).get_opd(m2wf)
+        self.m2_opd = poppy.ArrayOpticalElement(opd=m2_opd, pixelscale=m2wf.pixelscale, name='M2 OPD')
         
         m3wf = poppy.FresnelWavefront(beam_radius=self.m3_footprint_diam/2, wavelength=self.wavelength_c, npix=4096, oversample=1)
-        m3_opd = poppy.StatisticalPSDWFE(index=self.index, wfe=30*u.nm, radius=self.m3_diam/2, seed=seed3).get_opd(m3wf)
-        self.m3_opd = poppy.ArrayOpticalElement(opd=m3_opd, pixelscale=m3wf.pixelscale)
+        m3_opd = poppy.StatisticalPSDWFE(index=self.index, wfe=20*u.nm, radius=self.m3_diam/2, seed=seed3).get_opd(m3wf)
+        self.m3_opd = poppy.ArrayOpticalElement(opd=m3_opd, pixelscale=m3wf.pixelscale, name='M3 OPD')
         
         m4wf = poppy.FresnelWavefront(beam_radius=self.m4_diam/2, wavelength=self.wavelength_c, npix=self.npix, oversample=1)
         m4_opd = poppy.StatisticalPSDWFE(index=self.index, wfe=15*u.nm, radius=self.m4_diam/2, seed=seed4).get_opd(m4wf)
-        self.m4_opd = poppy.ArrayOpticalElement(opd=m4_opd, pixelscale=m4wf.pixelscale)
+        self.m4_opd = poppy.ArrayOpticalElement(opd=m4_opd, pixelscale=m4wf.pixelscale, name='M4 OPD')
         
-    def shift_surface_errors(surf_element, shift=np.array([0,0])*u.m):
-        surf_opd = surf_element.opd
+    def shift_surface_errors(self, pointing, quiet=True, plot=False):
+        m2_x_shift = np.abs(self.m2_shift_per_mas) * pointing[0]
+        m2_y_shift = np.abs(self.m2_shift_per_mas) * pointing[1]
 
-        x_shift_pix = shift[0].to_value(u.m)/wf.pixelscale.to_value(u.m/u.pix)
-        y_shift_pix = shift[1].to_value(u.m)/wf.pixelscale.to_value(u.m/u.pix)
-        print('Pixels to shift in x and y:', x_shift_pix, y_shift_pix)
-        
-        shifted_surf_opd = _scipy.ndimage.shift(surf_opd, (y_shift_pix, x_shift_pix))
-        new_surf_element = poppy.ArrayOpticalElement(opd=shifted_surf_opd, pixelscale=surf_element.pixelscale)
-        return new_surf_element
+        m2_x_shift_pix = (m2_x_shift/self.m2_opd.pixelscale).decompose()
+        m2_y_shift_pix = (m2_y_shift/self.m2_opd.pixelscale).decompose()
+        if not quiet: print(m2_x_shift_pix, m2_y_shift_pix)
+
+        m3_x_shift = np.abs(self.m3_shift_per_mas) * pointing[0]
+        m3_y_shift = np.abs(self.m3_shift_per_mas) * pointing[1]
+
+        m3_x_shift_pix = (m3_x_shift/self.m3_opd.pixelscale).decompose()
+        m3_y_shift_pix = (m3_y_shift/self.m3_opd.pixelscale).decompose()
+        if not quiet: print(m3_x_shift_pix, m3_y_shift_pix)
+
+        m2_shifted_opd = _scipy.ndimage.shift(self.m2_opd.opd, (m2_y_shift_pix.value, m2_x_shift_pix.value))
+        m3_shifted_opd = _scipy.ndimage.shift(self.m3_opd.opd, (m3_y_shift_pix.value, m3_x_shift_pix.value))
+        if plot: imshows.imshow2(m2_shifted_opd - self.m2_opd.opd, m3_shifted_opd - self.m3_opd.opd, 
+                                 'M2 Difference', 'M3 Difference', 
+                                 npix=128)
+
+        self.m2_opd.opd = copy.copy(m2_shifted_opd)
+        self.m3_opd.opd = copy.copy(m3_shifted_opd)
+        return
     
     def init_fosys(self):
         # hard-coded distances from zemax
@@ -140,10 +154,8 @@ class OTE():
         if self.use_opds: fosys.add_optic(self.m3_opd)
         fosys.add_optic(m4, distance=d_m3_m4 + self.m4_corr)
         if self.use_opds: fosys.add_optic(self.m4_opd)
-        fosys.add_optic(poppy.ScalarTransmission('Image'), distance=d_m4_fp - self.m4_corr + self.defocus)
-        if self.propagate_to_pupil:
-            fosys.add_optic(poppy.QuadraticLens(224.99998119573664*u.m), distance=224.99998119573664*u.m)
-            fosys.add_optic(poppy.ScalarTransmission('Pupil Plane'), distance=224.99998119573664*u.m)
+        if not self.calc_pupil:
+            fosys.add_optic(poppy.ScalarTransmission('Image'), distance=d_m4_fp - self.m4_corr + self.defocus)
         
         self.fosys = fosys
         
@@ -171,28 +183,17 @@ class OTE():
         
         return wfs
     
-    def calc_psf(self): # method for getting the PSF in photons
-        self.propagate_to_pupil = False
-        start = time.time()
+    def calc_wf(self): 
         self.init_fosys()
         self.init_inwave()
         _, wf = self.fosys.calc_psf(inwave=self.inwave, normalize=self.norm, return_final=True, return_intermediates=False)
-        return wf[0].wavefront
-    
-    def calc_pupil(self, return_amp_opd=True):
-        psf = self.calc_psf()
-        pupil_wf = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(psf))) / psf.shape[0]
-        
-        pupil_wf = utils.pad_or_crop(pupil_wf, self.npix)
-        
-        pupil_amp = xp.abs(pupil_wf)*self.pupil_mask
-        pupil_opd = xp.angle(pupil_wf)*self.pupil_mask * self.wavelength_c.to_value(u.m)/(2*np.pi)
-        
-        if return_amp_opd:
-            return pupil_amp, pupil_opd
+        if self.calc_pupil:
+            pupil_wf = utils.pad_or_crop(wf[0].wavefront, self.npix)
+            amp = xp.abs(pupil_wf) * self.pupil_mask
+            opd = xp.angle(pupil_wf)* self.wavelength.to_value(u.m)/(2*np.pi) * self.pupil_mask
+            return amp, opd
         else:
-            pupil_wf = pupil_amp *xp.exp(1j*2*np.pi/self.wavelength_c.to_value(u.m) * pupil_opd)
-            return pupil_wf
+            return wf[0].wavefront
     
     
     

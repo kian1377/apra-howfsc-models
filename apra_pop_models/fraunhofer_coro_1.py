@@ -179,6 +179,7 @@ class CORO():
 
         if self.use_fpm:
             self.wf = props.apply_vortex(self.wf, Nfpm=self.Nfpm, N=self.N, plot=False)
+            # self.wf = props.apply_vortex(utils.pad_or_crop(self.wf, self.npix), Nfpm=self.Nfpm, N=self.N, plot=True)
         if save_wfs: wfs.append(copy.copy(self.wf))
 
         self.wf *= utils.pad_or_crop(self.LYOT, self.N).astype(complex)

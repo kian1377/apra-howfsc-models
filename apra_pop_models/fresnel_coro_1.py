@@ -20,24 +20,6 @@ image = PlaneType.image
 
 import os
 print(os.path.dirname(__file__))
-    
-def make_vortex_phase_mask(npix, charge=6, 
-                           singularity=None, 
-                           focal_length=500*u.mm, pupil_diam=9.5*u.mm, wavelength=632.8*u.nm):
-    
-    x = xp.linspace(-npix//2, npix//2-1, npix) + 1/2
-    x,y = xp.meshgrid(x,x)
-    th = xp.arctan2(y,x)
-
-    phasor = xp.exp(1j*charge*th)
-    
-    if singularity is not None:
-#         sing*D/(focal_length*lam)
-        r = xp.sqrt((x-1/2)**2 + (y-1/2)**2)
-        mask = r>(singularity*pupil_diam/(focal_length*wavelength)).decompose().value
-        phasor *= mask
-    
-    return phasor
 
 class CORO():
 
@@ -115,12 +97,15 @@ class CORO():
         LYOT = xp.array(fits.getdata('lyot_90_gray_1000.fits'))
         
         self.APERTURE = poppy.ArrayOpticalElement(transmission=APERTURE, 
-                                                  pixelscale=self.pupil_diam/(self.npix*u.pix))
+                                                  pixelscale=self.pupil_diam/(self.npix*u.pix),
+                                                  name='Pupil')
         self.WFE = poppy.ArrayOpticalElement(transmission=xp.abs(WFE), 
                                              opd=xp.angle(WFE)*self.wavelength_c.to_value(u.m)/(2*np.pi),
-                                             pixelscale=self.pupil_diam/(self.npix*u.pix))
+                                             pixelscale=self.pupil_diam/(self.npix*u.pix),
+                                             name='Pupil WFE')
         self.LYOT = poppy.ArrayOpticalElement(transmission=LYOT, 
-                                              pixelscale=self.lyot_pupil_diam/(self.npix*u.pix))
+                                              pixelscale=self.lyot_pupil_diam/(self.npix*u.pix),
+                                              name='Lyot Stop (Pupil)')
 
         self.um_per_lamD = (self.wavelength_c*self.fl_oap9/(self.lyot_diam)).to(u.um)
 
@@ -219,8 +204,9 @@ class CORO():
         np.random.seed(1)
 
         self.opd_index = 2.75
-        rms_wfes = np.random.randn(10)*2*u.nm + 10*u.nm
-        seeds = np.linspace(0,10,11).astype(int)
+        self.pol_opd_index = 3.0
+        rms_wfes = np.random.randn(20)*2*u.nm + 8*u.nm
+        seeds = np.linspace(1,20,20).astype(int)
 
         self.oap1_opd = poppy.StatisticalPSDWFE('OAP1 OPD', index=self.opd_index, wfe=rms_wfes[1], radius=self.oap_diams/2, seed=seeds[1])
         self.oap2_opd = poppy.StatisticalPSDWFE('OAP2 OPD', index=self.opd_index, wfe=rms_wfes[2], radius=self.oap_diams/2, seed=seeds[2])
@@ -232,14 +218,11 @@ class CORO():
         self.oap8_opd = poppy.StatisticalPSDWFE('OAP8 OPD', index=self.opd_index, wfe=rms_wfes[8], radius=self.oap_diams/2, seed=seeds[8])
         self.oap9_opd = poppy.StatisticalPSDWFE('OAP9 OPD', index=self.opd_index, wfe=rms_wfes[9], radius=self.oap_diams/2, seed=seeds[9])
 
-        self.pol_opd_index = 2.5
-        rms_wfes = np.random.randn(10)*2*u.nm + 10*u.nm
-        seeds = np.linspace(0,3,4).astype(int)
-
-        self.lp1_opd = poppy.StatisticalPSDWFE('LP1 OPD', index=self.pol_opd_index, wfe=rms_wfes[1], radius=self.oap_diams/2, seed=seeds[0])
-        self.qwp1_opd = poppy.StatisticalPSDWFE('QWP1 OPD', index=self.pol_opd_index, wfe=rms_wfes[1], radius=self.oap_diams/2, seed=seeds[1])
-        self.qwp2_opd = poppy.StatisticalPSDWFE('QWP2 OPD', index=self.pol_opd_index, wfe=rms_wfes[1], radius=self.oap_diams/2, seed=seeds[2])
-        self.lp2_opd = poppy.StatisticalPSDWFE('LP2 OPD', index=self.pol_opd_index, wfe=rms_wfes[1], radius=self.oap_diams/2, seed=seeds[3])
+        self.lp1_opd = poppy.StatisticalPSDWFE('LP1 OPD', index=self.pol_opd_index, wfe=rms_wfes[10], radius=self.oap_diams/2, seed=seeds[10])
+        self.qwp1_opd = poppy.StatisticalPSDWFE('QWP1 OPD', index=self.pol_opd_index, wfe=rms_wfes[11], radius=self.oap_diams/2, seed=seeds[11])
+        self.qwp2_opd = poppy.StatisticalPSDWFE('QWP2 OPD', index=self.pol_opd_index, wfe=rms_wfes[12], radius=self.oap_diams/2, seed=seeds[12])
+        self.lp2_opd = poppy.StatisticalPSDWFE('LP2 OPD', index=self.pol_opd_index, wfe=rms_wfes[13], radius=self.oap_diams/2, seed=seeds[13])
+        self.filter_opd = poppy.StatisticalPSDWFE('Filter OPD', index=self.pol_opd_index, wfe=rms_wfes[14], radius=self.oap_diams/2, seed=seeds[14])
 
     def init_fosys(self):
         oap1 = poppy.QuadraticLens(self.fl_oap1, name='OAP1')
@@ -277,7 +260,7 @@ class CORO():
             fosys.add_optic(self.qwp1_opd, self.d_lp1_qwp1)
         else: 
             fosys.add_optic(poppy.ScalarTransmission('QWP1'), self.d_lp1_qwp1)
-        fosys.add_optic(poppy.ScalarTransmission('Apodizer Plane'), self.d_qwp1_apodizer)
+        fosys.add_optic(poppy.ScalarTransmission('Apodizer Pupil Plane'), self.d_qwp1_apodizer)
         fosys.add_optic(oap5, self.d_apodizer_oap5)
         if self.use_opds: fosys.add_optic(self.oap5_opd)
         fosys.add_optic(poppy.ScalarTransmission(name='FPM place-holder'), self.d_oap5_fpm)
@@ -285,9 +268,6 @@ class CORO():
 
         fosys2 = poppy.FresnelOpticalSystem(pupil_diameter=self.lyot_pupil_diam, npix=self.npix, beam_ratio=1/self.oversample)
 
-        # fosys2.add_optic(oap6, self.d_fpm_oap6)
-        # if self.use_opds: fosys.add_optic(self.oap6_opd)
-        # fosys2.add_optic(poppy.ScalarTransmission('Lyot Pupil'), self.d_oap6_lyot)
         fosys2.add_optic(poppy.ScalarTransmission('Lyot Pupil'))
         fosys2.add_optic(self.LYOT,)
         fosys2.add_optic(oap7, self.d_lyot_oap7)
@@ -304,6 +284,7 @@ class CORO():
         else:
             fosys2.add_optic(poppy.ScalarTransmission('LP2'), self.d_qwp2_lp2)
         fosys2.add_optic(poppy.ScalarTransmission('Filter'), self.d_lp2_filter)
+        if self.use_opds: fosys2.add_optic(self.filter_opd)
         fosys2.add_optic(oap9, self.d_filter_oap9)
         if self.use_opds: fosys.add_optic(self.oap9_opd)
         fosys2.add_optic(poppy.Detector(pixelscale=self.psf_pixelscale, fov_pixels=self.npsf, interp_order=3),
@@ -323,18 +304,15 @@ class CORO():
         if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
         self.init_fosys()
         self.init_inwave()
-        _, wfs1 = self.fosys_pupil_fpm.calc_psf(inwave=self.inwave, return_intermediates=True)
+        _, wfs1 = self.fosys_pupil_fpm.calc_psf(inwave=self.inwave, normalize='none', return_intermediates=True)
         fpm_wf = copy.deepcopy(wfs1[-1])
 
         lyot_inwave = poppy.FresnelWavefront(beam_radius=self.lyot_pupil_diam/2, wavelength=self.wavelength,
                                              npix=self.npix, oversample=self.oversample,)
         lyot_wfarr = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(fpm_wf.wavefront))) * self.npix * 2
-        
-        if self.return_lyot:
-            return lyot_wfarr
-
+        lyot_wfarr = utils.pad_or_crop(lyot_wfarr, self.npix)
         if self.use_fpm:
-            lyot_wfarr = props.apply_vortex(lyot_wfarr, Nfpm=self.Nfpm, N=self.N, plot=False) # apply the vortex mask if using the FPM
+            lyot_wfarr = props.apply_vortex(lyot_wfarr, Nfpm=self.Nfpm, N=self.N, plot=True) # apply the vortex mask if using the FPM
 
         if self.use_opds:
             # back propagate the lyot pupil wavefront to the OAP6 plane
@@ -358,13 +336,19 @@ class CORO():
     def calc_wf(self): # method for getting the PSF in photons
         self.init_fosys()
         self.init_inwave()
-        _, wfs1 = self.fosys_pupil_fpm.calc_psf(inwave=self.inwave, return_final=True, return_intermediates=False)
+        _, wfs1 = self.fosys_pupil_fpm.calc_psf(inwave=self.inwave, normalize='none', return_final=True, return_intermediates=False)
         fpm_wf = copy.deepcopy(wfs1[-1])
 
         lyot_inwave = poppy.FresnelWavefront(beam_radius=self.lyot_pupil_diam/2, wavelength=self.wavelength,
                                              npix=self.npix, oversample=self.oversample,)
         lyot_wfarr = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(fpm_wf.wavefront))) * self.npix * 2
 
+        if self.return_lyot:
+            lyot_wfarr = utils.pad_or_crop(lyot_wfarr, self.npix)
+            lyot_amp = xp.abs(lyot_wfarr) * self.APERTURE.amplitude
+            lyot_opd = xp.angle(lyot_wfarr) * self.wavelength.to_value(u.m)/(2*np.pi) * self.APERTURE.amplitude
+            return lyot_amp, lyot_opd
+        
         if self.use_fpm:
             lyot_wfarr = props.apply_vortex(lyot_wfarr, Nfpm=self.Nfpm, N=self.N, plot=False) # apply the vortex mask if using the FPM
 
@@ -375,7 +359,7 @@ class CORO():
             lyot_wfarr *= self.oap6_opd.get_phasor(lyot_inwave)
             # propagate back to the Lyot pupil plane
             lyot_wfarr = props.ang_spec(lyot_wfarr, self.wavelength, self.d_oap6_lyot, self.lyot_pupil_diam/(self.npix*u.pix))
-
+        
         lyot_inwave.wavefront = copy.deepcopy(lyot_wfarr)
 
         _, wfs2 = self.fosys_lyot_image.calc_psf(normalize='none', return_final=True, return_intermediates=False,

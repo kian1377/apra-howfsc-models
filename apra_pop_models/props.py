@@ -152,18 +152,20 @@ def mft_reverse(fpwf, psf_pixelscale_lamD, npix):
 
 def apply_vortex(pupil_wf, Nfpm, N, plot=False):
     # course FPM first
+    if plot: imshows.imshow1(xp.abs(pupil_wf))
+
     npix = pupil_wf.shape[0]
+    # print(npix)
     vortex_mask = make_vortex_phase_mask(Nfpm)
 
     window_size = int(30/ (npix/Nfpm))
-    # print(window_size)
     w1d = xp.array(windows.tukey(window_size, 1, False))
     low_res_window = 1 - utils.pad_or_crop(xp.outer(w1d, w1d), Nfpm)
-    if plot: imshows.imshow1(low_res_window, npix=128, pxscl=npix/Nfpm)
 
     fp_wf_low_res = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(utils.pad_or_crop(pupil_wf, Nfpm)))) # to FPM
     fp_wf_low_res *= vortex_mask * low_res_window # apply FPM
     pupil_wf_low_res = utils.pad_or_crop(xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(fp_wf_low_res))), N) # to Lyot Pupil
+    if plot: imshows.imshow2(xp.abs(pupil_wf_low_res), low_res_window, npix2=128, pxscl2=npix/Nfpm)
 
     # high res FPM second
     high_res_sampling = 0.025 # lam/D per pixel
@@ -182,14 +184,16 @@ def apply_vortex(pupil_wf, Nfpm, N, plot=False):
     sing_mask = r>0.15
     high_res_window *= sing_mask
 
-    if plot: imshows.imshow1(high_res_window, npix=int(np.round(128*9.765625)), pxscl=high_res_sampling)
-
     fp_wf_high_res = mft_forward(utils.pad_or_crop(pupil_wf, npix), high_res_sampling, Nmft)
     fp_wf_high_res *= vortex_mask * high_res_window # apply FPM
     pupil_wf_high_res = mft_reverse(fp_wf_high_res, high_res_sampling, npix,)
     pupil_wf_high_res = utils.pad_or_crop(pupil_wf_high_res, N)
 
+    if plot: imshows.imshow2(xp.abs(pupil_wf_high_res), high_res_window, npix2=int(np.round(128*9.765625)), pxscl2=high_res_sampling)
+
     post_fpm_pupil = pupil_wf_low_res + pupil_wf_high_res
+
+    if plot: imshows.imshow1(xp.abs(post_fpm_pupil))
 
     return post_fpm_pupil
 

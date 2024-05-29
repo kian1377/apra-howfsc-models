@@ -310,9 +310,9 @@ class CORO():
         lyot_inwave = poppy.FresnelWavefront(beam_radius=self.lyot_pupil_diam/2, wavelength=self.wavelength,
                                              npix=self.npix, oversample=self.oversample,)
         lyot_wfarr = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(fpm_wf.wavefront))) * self.npix * 2
-        lyot_wfarr = utils.pad_or_crop(lyot_wfarr, self.npix)
         if self.use_fpm:
-            lyot_wfarr = props.apply_vortex(lyot_wfarr, Nfpm=self.Nfpm, N=self.N, plot=True) # apply the vortex mask if using the FPM
+            lyot_wfarr = utils.pad_or_crop(lyot_wfarr, self.npix)
+            lyot_wfarr = props.apply_vortex(lyot_wfarr, Nfpm=self.Nfpm, N=self.N, plot=False) # apply the vortex mask if using the FPM
 
         if self.use_opds:
             # back propagate the lyot pupil wavefront to the OAP6 plane

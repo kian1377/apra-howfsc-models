@@ -91,17 +91,19 @@ class OTE():
     def shift_surface_errors(self, pointing, quiet=True, plot=False):
         m2_x_shift = np.abs(self.m2_shift_per_mas) * pointing[0]
         m2_y_shift = np.abs(self.m2_shift_per_mas) * pointing[1]
-
-        m2_x_shift_pix = (m2_x_shift/self.m2_opd.pixelscale).decompose()
-        m2_y_shift_pix = (m2_y_shift/self.m2_opd.pixelscale).decompose()
-        if not quiet: print(m2_x_shift_pix, m2_y_shift_pix)
+        if not quiet: print('M2 shift in physical units: ', m2_x_shift, m2_y_shift)
 
         m3_x_shift = np.abs(self.m3_shift_per_mas) * pointing[0]
         m3_y_shift = np.abs(self.m3_shift_per_mas) * pointing[1]
+        if not quiet: print('M3 shift in physical units: ', m3_x_shift, m3_y_shift)
+
+        m2_x_shift_pix = (m2_x_shift/self.m2_opd.pixelscale).decompose()
+        m2_y_shift_pix = (m2_y_shift/self.m2_opd.pixelscale).decompose()
+        if not quiet: print('M2 shift in pixels: ', m2_x_shift_pix, m2_y_shift_pix)
 
         m3_x_shift_pix = (m3_x_shift/self.m3_opd.pixelscale).decompose()
         m3_y_shift_pix = (m3_y_shift/self.m3_opd.pixelscale).decompose()
-        if not quiet: print(m3_x_shift_pix, m3_y_shift_pix)
+        if not quiet: print('M3 shift in pixels: ', m3_x_shift_pix, m3_y_shift_pix)
 
         m2_shifted_opd = _scipy.ndimage.shift(self.m2_opd.opd, (m2_y_shift_pix.value, m2_x_shift_pix.value))
         m3_shifted_opd = _scipy.ndimage.shift(self.m3_opd.opd, (m3_y_shift_pix.value, m3_x_shift_pix.value))

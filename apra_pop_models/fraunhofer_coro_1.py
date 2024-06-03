@@ -18,20 +18,18 @@ class CORO():
 
     def __init__(self, 
                  wavelength=None, 
-                 npsf=128,
-                 psf_pixelscale=5e-6*u.m/u.pix,
-                 psf_pixelscale_lamD=None, 
+                 npsf=128, 
                  dm1_ref=np.zeros((34,34)),
                  dm2_ref=np.zeros((34,34)),
                  dm_inf=None, # defaults to inf.fits
-                 d_dm1_dm2=277*u.mm, 
+                 d_dm1_dm2=283.569*u.mm, 
                  Imax_ref=1,
                  WFE=None,
                  ):
         
         self.wavelength_c = 650e-9*u.m
         self.total_pupil_diam = 6.5*u.m
-        self.pupil_diam = 9.5*u.mm
+        self.pupil_diam = 9.6*u.mm
         
         self.wavelength = self.wavelength_c if wavelength is None else wavelength
         
@@ -49,19 +47,16 @@ class CORO():
         self.pupil_lyot_mag = 400/500 # pupil size ratios derived from focal lengths of relay OAPs
 
         self.fpm_fl = 500*u.mm
-        self.imaging_fl = 300*u.mm
+        self.imaging_fl = 150*u.mm
 
+        self.lyot_pupil_diam = self.pupil_lyot_mag * self.pupil_diam
         self.lyot_diam = self.pupil_lyot_mag * 0.9 * self.pupil_diam
         self.um_per_lamD = (self.wavelength_c*self.imaging_fl/(self.lyot_diam)).to(u.um)
         self.as_per_lamD = ((self.wavelength_c/self.total_pupil_diam)*u.radian).to(u.arcsec)
 
         self.npsf = npsf
-        if psf_pixelscale_lamD is None: # overrides psf_pixelscale this way
-            self.psf_pixelscale = psf_pixelscale
-            self.psf_pixelscale_lamD = self.psf_pixelscale.to_value(u.um/u.pix)/self.um_per_lamD.value
-        else:
-            self.psf_pixelscale_lamD = psf_pixelscale_lamD
-            self.psf_pixelscale = self.psf_pixelscale_lamD * self.um_per_lamD/u.pix
+        self.psf_pixelscale = 5e-6*u.m/u.pix
+        self.psf_pixelscale_lamD = self.psf_pixelscale.to_value(u.um/u.pix)/self.um_per_lamD.value
         
         self.dm_inf = os.path.dirname(__file__)+'/inf.fits' if dm_inf is None else dm_inf
         self.dm1_ref = dm1_ref

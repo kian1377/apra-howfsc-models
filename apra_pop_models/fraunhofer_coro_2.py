@@ -18,20 +18,20 @@ class CORO():
 
     def __init__(self, 
                  wavelength=None, 
-                 npsf=128,
+                 npsf=256,
                  psf_pixelscale=5e-6*u.m/u.pix,
                  psf_pixelscale_lamD=None, 
                  dm1_ref=np.zeros((68,68)),
                  dm2_ref=np.zeros((68,68)),
                  dm_inf=None, # defaults to inf.fits
-                 d_dm1_dm2=1110.7692*u.mm, 
+                 d_dm1_dm2=277*u.mm, 
                  Imax_ref=1,
                  WFE=None,
                  ):
         
         self.wavelength_c = 650e-9*u.m
         self.total_pupil_diam = 6.5*u.m
-        self.pupil_diam = 19*u.mm
+        self.pupil_diam = 19.2*u.mm
         
         self.wavelength = self.wavelength_c if wavelength is None else wavelength
         
@@ -51,6 +51,7 @@ class CORO():
         self.fpm_fl = 500*u.mm
         self.imaging_fl = 300*u.mm
 
+        self.lyot_pupil_diam = self.pupil_lyot_mag * self.pupil_diam
         self.lyot_diam = self.pupil_lyot_mag * 0.9 * self.pupil_diam
         self.um_per_lamD = (self.wavelength_c*self.imaging_fl/(self.lyot_diam)).to(u.um)
         self.as_per_lamD = ((self.wavelength_c/self.total_pupil_diam)*u.radian).to(u.arcsec)

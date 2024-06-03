@@ -30,7 +30,7 @@ class CORO():
                  psf_pixelscale_lamD=None, 
                  dm1_ref=np.zeros((34,34)),
                  dm2_ref=np.zeros((34,34)),
-                 d_dm1_dm2=277*u.mm, 
+                 d_dm1_dm2=283.569*u.mm, 
                  Imax_ref=1,
                  WFE=None,
                  use_opds=False,
@@ -39,7 +39,7 @@ class CORO():
         
         self.wavelength_c = 650e-9*u.m
         self.total_pupil_diam = 6.5*u.m
-        self.pupil_diam = 9.5*u.mm
+        self.pupil_diam = 9.6*u.mm
         self.lyot_pupil_diam = 400/500 * self.pupil_diam
         self.lyot_diam = 400/500 * 0.9 * self.pupil_diam
         
@@ -63,7 +63,7 @@ class CORO():
         self.fl_oap6 = 400*u.mm
         self.fl_oap7 = 250*u.mm
         self.fl_oap8 = 250*u.mm
-        self.fl_oap9 = 300*u.mm
+        self.fl_oap9 = 150*u.mm
 
         self.d_pupil_oap1 = self.fl_oap1
         self.d_oap1_ifp1 = self.fl_oap1
@@ -110,6 +110,8 @@ class CORO():
         self.um_per_lamD = (self.wavelength_c*self.fl_oap9/(self.lyot_diam)).to(u.um)
 
         self.npsf = npsf
+        self.psf_pixelscale = 5e-6*u.m/u.pix
+        self.psf_pixelscale_lamD = self.psf_pixelscale.to_value(u.um/u.pix)/self.um_per_lamD.value
         if psf_pixelscale_lamD is None: # overrides psf_pixelscale this way
             self.psf_pixelscale = psf_pixelscale
             self.psf_pixelscale_lamD = self.psf_pixelscale.to_value(u.um/u.pix)/self.um_per_lamD.value

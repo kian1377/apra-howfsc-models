@@ -150,7 +150,7 @@ def mft_reverse(fpwf, psf_pixelscale_lamD, npix):
 
     return Mx@fpwf@My * norm_coeff
 
-def apply_vortex(pupil_wf, Nfpm, N, plot=False):
+def apply_vortex(pupil_wf, Nfpm, N, plot=False, return_all=False):
     # course FPM first
     if plot: imshows.imshow1(xp.abs(pupil_wf))
 
@@ -195,7 +195,10 @@ def apply_vortex(pupil_wf, Nfpm, N, plot=False):
 
     if plot: imshows.imshow1(xp.abs(post_fpm_pupil))
 
-    return post_fpm_pupil
+    if return_all:
+        return post_fpm_pupil, pupil_wf_low_res, pupil_wf_high_res, low_res_window, high_res_window
+    else:
+        return post_fpm_pupil
 
 # def apply_vortex(self, pupil_wf):
 #     from scipy.signal import windows

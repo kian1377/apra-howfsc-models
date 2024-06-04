@@ -2,6 +2,7 @@
 # Ignore .ZDA files
 *.ZDA
 *.fits
+*.csv 
 
 # Ignore .ipynb_checkpoints
 .ipynb_checkpoints/

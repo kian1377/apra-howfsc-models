@@ -104,6 +104,7 @@ class MODEL():
 
         self.det_rotation = 0
         self.flip_dm = False
+        self.flip_lyot = False
 
         self.use_vortex = True
         self.use_wfe = True
@@ -123,7 +124,7 @@ class MODEL():
         dm_command[self.dm_mask] = xp.array(actuators)
         mft_command = self.Mx@dm_command@self.My
         fourier_surf = self.inf_fun_fft * mft_command
-        dm_surf = xp.fft.ifftshift(xp.fft.ifft2(xp.fft.fftshift(fourier_surf,))).real
+        dm_surf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(fourier_surf,))).real
         dm_phasor = xp.exp(1j * 4*xp.pi/self.wavelength.to_value(u.m) * dm_surf)
         if self.flip_dm: dm_phasor = xp.rot90(xp.rot90(dm_phasor))
 
@@ -154,7 +155,7 @@ class MODEL():
             wf = (pupil_wf_lres + pupil_wf_hres)
             if plot: imshows.imshow2(xp.abs(wf), xp.angle(wf), npix=1.5*self.npix)
 
-        wf = xp.rot90(xp.rot90(wf))
+        if self.flip_lyot: wf = xp.rot90(xp.rot90(wf))
         wf *= utils.pad_or_crop(self.LYOT, self.N)
         if plot: imshows.imshow2(xp.abs(wf), xp.angle(wf), npix=1.5*self.npix)
         
@@ -216,11 +217,12 @@ def val_and_grad(del_acts, M, actuators, E_ab, r_cond, control_mask, verbose=Fal
 
     # Compute the gradient with the adjoint model
     delE_masked = control_mask * delE # still a 2D array
+    delE_masked = _scipy.ndimage.rotate(delE_masked, -M.det_rotation, reshape=False, order=5)
     dJ_dE_dm = 2 * delE_masked / E_ab_l2norm
     dJ_dE_ls = props.mft_reverse(dJ_dE_dm, M.psf_pixelscale_lamD, M.npix * M.lyot_ratio, M.N, convention='+')
     if plot: imshows.imshow2(xp.abs(dJ_dE_ls), xp.angle(dJ_dE_ls), 'RMAD Lyot Stop', npix=1.5*M.npix)
     dJ_dE_lp = utils.pad_or_crop(M.LYOT, M.N) * dJ_dE_ls
-    dJ_dE_lp = xp.rot90(xp.rot90(dJ_dE_lp))
+    if M.flip_lyot: dJ_dE_lp = xp.rot90(xp.rot90(dJ_dE_lp))
     if plot: imshows.imshow2(xp.abs(dJ_dE_lp), xp.angle(dJ_dE_lp), 'RMAD Lyot Pupil', npix=1.5*M.npix)
 
     # Now we have to split and back-propagate the gradient along the two branches 

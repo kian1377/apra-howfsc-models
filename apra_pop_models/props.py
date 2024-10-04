@@ -106,12 +106,14 @@ def ang_spec(wavefront, wavelength, distance, pixelscale):
     k = 2*np.pi/wavelength.to_value(u.m)
     kx, ky = xp.meshgrid(kxy,kxy)
 
+    # wf_as = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(wavefront)))
     wf_as = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(wavefront)))
     
     kz = xp.sqrt(k**2 - kx**2 - ky**2 + 0j)
     tf = xp.exp(1j*kz*distance.to_value(u.m))
 
     prop_wf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(wf_as * tf)))
+    # prop_wf = xp.fft.fftshift(xp.fft.ifft2(wf_as * tf))
     kz = 0.0
     tf = 0.0
 

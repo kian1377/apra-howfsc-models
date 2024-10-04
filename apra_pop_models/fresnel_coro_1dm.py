@@ -139,19 +139,15 @@ class CORO():
         pupil_pxscl = self.pupil_diam.to_value(u.m)/self.npix
         sampling = act_spacing.to_value(u.m)/pupil_pxscl
         print('influence function sampling', sampling)
-        inf, inf_sampling = dm.make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=sampling, coupling=0.15,)
-        self.DM = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM (pupil)')
-        self.Nact = self.DM.Nact
+        self.Nact = 34
+        inf = dm.make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=sampling, coupling=0.15,  Nact=self.Nact + 2)
+        self.DM = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM (pupil)',)
         self.Nacts = self.DM.Nacts
         self.act_spacing = self.DM.act_spacing
         self.dm_active_diam = self.DM.active_diam
-        self.dm_full_diam = self.DM.pupil_diam
         self.dm_mask = self.DM.dm_mask
         self.dm_ref = dm_ref
         self.set_dm(dm_ref)
-        self.init_fosys()
-
-        self.return_lyot = False
 
     @property
     def wavelength(self):
@@ -325,7 +321,7 @@ class CORO():
         return all_wfs
     
     def calc_wf(self): 
-        self.return_pupil=False
+        self.return_pupil = False
         fosys_to_fpm, fosys_to_scicam = self.init_fosys()
         ep_inwave = self.init_inwave()
         _, fpm_wf = fosys_to_fpm.calc_psf(inwave=ep_inwave, normalize='none', return_final=True)

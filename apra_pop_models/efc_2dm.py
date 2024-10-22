@@ -9,8 +9,6 @@ import copy
 from IPython.display import display, clear_output
 
 from pathlib import Path
-# iefc_data_dir = Path('/groups/douglase/kians-data-files/roman-cgi-iefc-data')
-iefc_data_dir = Path('/home/kianmilani/Projects/roman-cgi-iefc-data')
 
 def compute_jacobian(M, 
                    calib_amp, calib_modes, 
@@ -44,7 +42,7 @@ def compute_jacobian(M,
         response_matrix[::2,i] = response[control_mask].real
         response_matrix[1::2,i] = response[control_mask].imag
 
-        print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(ci+1, Nmodes, time.time()-start), end='')
+        print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(i+1, Nmodes, time.time()-start), end='')
         print("\r", end="")
     
     print()

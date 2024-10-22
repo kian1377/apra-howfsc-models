@@ -1,8 +1,8 @@
 from .math_module import xp,_scipy, ensure_np_array
-import stppsf.utils as utils
-import stppsf.imshows as imshows
-import stppsf.props as props
-import stppsf.dm as dm
+from . import utils
+from . import imshows
+from . import dm
+from . import props
 
 import numpy as np
 import astropy.units as u

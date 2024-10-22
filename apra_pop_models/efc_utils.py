@@ -43,23 +43,23 @@ def beta_reg(S, beta=-1):
     return control_matrix
 
 # Creating focal plane masks
-def create_annular_focal_plane_mask(sysi, 
-                                    inner_radius, outer_radius, 
+def create_annular_focal_plane_mask(npsf, psf_pixelscale, 
+                                    irad, orad,  
                                     edge=None,
                                     shift=(0,0), 
                                     rotation=0,
                                     plot=False):
-    x = (xp.linspace(-sysi.npsf/2, sysi.npsf/2-1, sysi.npsf) + 1/2)*sysi.psf_pixelscale_lamD
+    x = (xp.linspace(-npsf/2, npsf/2-1, npsf) + 1/2)*psf_pixelscale
     x,y = xp.meshgrid(x,x)
     r = xp.hypot(x, y)
-    mask = (r < outer_radius) * (r > inner_radius)
+    mask = (r > irad) * (r < orad)
     if edge is not None: mask *= (x > edge)
     
     mask = _scipy.ndimage.rotate(mask, rotation, reshape=False, order=0)
     mask = _scipy.ndimage.shift(mask, (shift[1], shift[0]), order=0)
     
     if plot:
-        imshows.imshow1(mask)
+        imshow1(mask)
         
     return mask
 

@@ -1,5 +1,5 @@
 from .math_module import xp, _scipy, ensure_np_array
-import stppsf.utils as utils
+from . import utils
 
 import numpy as np
 import scipy

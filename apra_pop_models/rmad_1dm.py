@@ -209,9 +209,9 @@ def val_and_grad(del_acts, M, actuators, E_ab, r_cond, control_mask, verbose=Fal
     J_delE = delE_vec.dot(delE_vec.conjugate()).real
     J_c = del_acts.dot(del_acts) * r_cond / (M.wavelength_c.to_value(u.m))**2
     J = (J_delE + J_c) / E_ab_l2norm
-    if verbose: 
-        print(f'\tCost-function J_delE: {J_delE:.3f}') 
-        print(f'\tCost-function J_c: {J_c:.3f}') 
+    if verbose:
+        print(f'\tCost-function J_delE: {J_delE:.3f}')
+        print(f'\tCost-function J_c: {J_c:.3f}')
         print(f'\tCost-function normalization factor: {E_ab_l2norm:.3f}')
         print(f'\tTotal cost-function value: {J:.3f}\n')
 

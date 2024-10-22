@@ -87,7 +87,7 @@ class CORO():
         pupil_pxscl = self.pupil_diam.to_value(u.m)/self.npix
         sampling = act_spacing.to_value(u.m)/pupil_pxscl
         print('influence function sampling', sampling)
-        inf, inf_sampling = dm.make_gaussian_inf_fun(act_spacing=act_spacing, sampling=sampling, coupling=0.15,)
+        inf = dm.make_gaussian_inf_fun(act_spacing=act_spacing, sampling=sampling, coupling=0.15,)
         self.DM1 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM1')
         self.DM2 = dm.DeformableMirror(inf_fun=inf, inf_sampling=sampling, name='DM2')
 

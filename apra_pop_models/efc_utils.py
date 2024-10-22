@@ -171,19 +171,17 @@ def create_random_probes(rms, alpha, dm_mask, fmin=1, fmax=17, nprobes=3,
                 imshows.imshow2(probes[i], response, pxscl2=1/4)
             else:
                 imshows.imshow1(probes[i])
-                
-                
-    
+            
     return probes
 
 def create_2dm_mode_matrix(dm_modes_1, dm_modes_2=None):
     
     dm_modes_2 = dm_modes_1 if dm_modes_2 is None else dm_modes_2 # assumes same modes on each DM
     
-    calib_modes_dm1 = np.concatenate([dm_modes_1, np.zeros_like(dm_modes_2)])
-    calib_modes_dm2 = np.concatenate([np.zeros_like(dm_modes_1), dm_modes_2])
+    calib_modes_dm1 = xp.concatenate([dm_modes_1, xp.zeros_like(dm_modes_2)])
+    calib_modes_dm2 = xp.concatenate([xp.zeros_like(dm_modes_1), dm_modes_2])
 #     print(calib_modes_dm1.shape, calib_modes_dm2.shape)
-    Mcalib = np.concatenate([calib_modes_dm1, calib_modes_dm2], axis=1)
+    Mcalib = xp.concatenate([calib_modes_dm1, calib_modes_dm2], axis=1)
     
     return Mcalib
 
@@ -263,7 +261,7 @@ def fourier_mode(lambdaD_yx, rms=1, acts_per_D_yx=(34,34), Nact=34, phase=0):
 def create_all_poke_modes(dm_mask, ndms=1):
     Nact = dm_mask.shape[0]
     Nacts = int(np.sum(dm_mask))
-    poke_modes = np.zeros((Nacts, Nact, Nact))
+    poke_modes = xp.zeros((Nacts, Nact, Nact))
     count=0
     for i in range(Nact):
         for j in range(Nact):

@@ -75,6 +75,24 @@ def calibrate(sysi,
 
     return responses
 
+from efc_host_utils import Commands, EmbeddedController
+embedded_controller = EmbeddedController()
+
+def send_jac(jac):
+    embedded_controller.send_jacobian(jac)
+
+def do_decomp(beta):
+    embedded_controller.do_decomposition(beta)
+
+def do_ata():
+    embedded_controller.do_ATA()
+
+def do_pwp(pwp_ims, control_mask):
+    return embedded_controller.do_pwp(pwp_ims[:, control_mask])
+
+def single_efc(ef, control_mask):
+    return embedded_controller.do_EFC_with_decomp(ef[control_mask])
+
 def run(sysi, 
         calibration_modes,
         control_matrix,

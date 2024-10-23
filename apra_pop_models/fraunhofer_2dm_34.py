@@ -282,7 +282,7 @@ def val_and_grad(del_acts, M, actuators, E_ab, r_cond, control_mask, verbose=Fal
     dJ_dE_DM1 = props.ang_spec(dJ_dE_DM2P, M.wavelength, -M.d_dm1_dm2, M.dm_pxscl)
     if plot: imshows.imshow2(xp.abs(dJ_dE_DM1), xp.angle(dJ_dE_DM1), 'RMAD DM1 WF', npix=1.5*M.npix)
 
-    dJ_dS_DM2 = -4*xp.pi/M.wavelength.to_value(u.m) * xp.imag(dJ_dE_DM2 * E_DM2P.conj() * dm2_phasor.conj())
+    dJ_dS_DM2 = 4*xp.pi/M.wavelength.to_value(u.m) * xp.imag(dJ_dE_DM2 * E_DM2P.conj() * dm2_phasor.conj())
     dJ_dS_DM1 = 4*xp.pi/M.wavelength.to_value(u.m) * xp.imag(dJ_dE_DM1 * E_EP.conj() * dm1_phasor.conj())
     if M.flip_dm: 
         dJ_dS_DM1 = xp.rot90(xp.rot90(dJ_dS_DM1))

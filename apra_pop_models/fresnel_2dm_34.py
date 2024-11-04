@@ -156,8 +156,8 @@ class CORO():
         return getattr(self, attr)
     
     def reset_dms(self):
-        self.set_dm1(self.dm1_ref)
-        self.set_dm2(self.dm2_ref)
+        self.DM1.command = copy.copy(self.dm1_ref)
+        self.DM2.command = copy.copy(self.dm2_ref)
 
     def zero_dms(self):
         self.set_dm1(xp.zeros((self.Nact,self.Nact)))
@@ -350,6 +350,7 @@ class CORO():
         im = 0.0
         for i in range(Nwaves):
             self.wavelength = waves[i]
+            # print(waves[i])
             fpwf = self.calc_wf()
             im += xp.abs( fpwf )**2 / Nwaves
         return im

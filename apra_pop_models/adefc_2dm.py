@@ -167,7 +167,7 @@ def run_bb(I,
         M, 
         val_and_grad,
         control_mask,
-        bandpasses,
+        # bandpasses,
         data,
         pwp_params=None,
         Nitr=3, 
@@ -177,14 +177,13 @@ def run_bb(I,
         gain=0.5, 
         ):
     
-    Nbps = bandpasses.shape[0]
-    Nwaves_per_bp = bandpasses.shape[1]
-    est_waves = bandpasses[:, Nwaves_per_bp//2]
+    Nbps = I.bandpasses.shape[0]
+    Nwaves_per_bp = I.bandpasses.shape[1]
+    est_waves = I.bandpasses[:, Nwaves_per_bp//2]
 
     starting_itr = len(data['images'])
     if len(data['dm1_commands'])>0:
-        total_dm1 = copy.copy(data['dm1_commands'][-1])
-        total_dm2 = copy.copy(data['dm2_commands'][-1])
+        total_dm1, total_dm2 = ( copy.copy(I.get_dm1()), copy.copy(I.get_dm2()) )
     else:
         total_dm1, total_dm2 = ( xp.zeros((M.Nact,M.Nact)), xp.zeros((M.Nact,M.Nact)) ) 
 
@@ -214,11 +213,11 @@ def run_bb(I,
         del_acts = gain * res.x
         del_dm1[M.dm_mask] = del_acts[:M.Nacts//2]
         del_dm2[M.dm_mask] = del_acts[M.Nacts//2:]
-        total_dm1 += del_dm1
-        total_dm2 += del_dm2
 
         I.add_dm1(del_dm1)
         I.add_dm2(del_dm2)
+        total_dm1, total_dm2 = ( copy.copy(I.get_dm1()), copy.copy(I.get_dm2()) )
+
         image_ni = I.snap()
         mean_ni = xp.mean(image_ni[control_mask])
 
@@ -238,8 +237,6 @@ def run_bb(I,
                 pxscl3=I.psf_pixelscale_lamDc, lognorm3=True, vmin3=1e-10)
 
     return data
-
-
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm

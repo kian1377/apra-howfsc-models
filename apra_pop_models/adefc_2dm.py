@@ -3,19 +3,31 @@ from . import utils
 from .imshows import imshow1, imshow2, imshow3
 
 import numpy as np
+import astropy.units as u
 from scipy.optimize import minimize
 import time
 import copy
 
-def run_pwp(I, 
-            M, 
-            current_acts, 
-            control_mask, 
-            probes, probe_amp, 
-            reg_cond=1e-3, 
-            plot=False,
-            plot_est=False,
-            ):
+def calc_wfs(I, waves, control_mask, plot=False):
+    Nwaves = len(waves)
+    E_abs = xp.zeros((Nwaves, I.npsf, I.npsf), dtype=xp.complex128)
+    for i in range(Nwaves):
+        I.wavelength = waves[i]
+        E_abs[i] = I.calc_wf() * control_mask
+        if plot: imshow2(xp.abs(E_abs[i])**2, xp.angle(E_abs[i])*control_mask, lognorm1=True, cmap2='twilight')
+
+    return E_abs
+
+def pwp(I, 
+        M, 
+        current_acts, 
+        control_mask, 
+        probes, 
+        probe_amp, 
+        reg_cond=1e-3, 
+        plot=False,
+        plot_est=False,
+        ):
     
     Nmask = int(control_mask.sum())
     Nprobes = probes.shape[0]
@@ -76,29 +88,28 @@ def run_pwp(I,
                 pxscl=M.psf_pixelscale_lamD)
     return E_est_2d
 
+def pwp_bb():
+    return
+
 def run(I, 
         M, 
         val_and_grad,
         control_mask,
-        est_fun=None, est_params=None,
+        data,
+        pwp_params=None,
         Nitr=3, 
         reg_cond=1e-2,
         bfgs_tol=1e-3,
         bfgs_opts=None,
         gain=0.5, 
-        all_ims=[], 
-        all_efs=[],
-        all_commands=[],
         ):
     
-    starting_itr = len(all_ims)
-
-    if len(all_commands)>0:
-        total_dm1 = copy.copy(all_commands[-1][0])
-        total_dm2 = copy.copy(all_commands[-1][1])
+    starting_itr = len(data['images'])
+    if len(data['dm1_commands'])>0:
+        total_dm1 = copy.copy(data['dm1_commands'][-1])
+        total_dm2 = copy.copy(data['dm2_commands'][-1])
     else:
-        total_dm1 = xp.zeros((M.Nact,M.Nact))
-        total_dm2 = xp.zeros((M.Nact,M.Nact))
+        total_dm1, total_dm2 = ( xp.zeros((M.Nact,M.Nact)), xp.zeros((M.Nact,M.Nact)) ) 
 
     del_dm1 = xp.zeros((M.Nact,M.Nact))
     del_dm2 = xp.zeros((M.Nact,M.Nact))
@@ -107,8 +118,8 @@ def run(I,
         print('Running estimation algorithm ...')
         I.subtract_dark = False
         
-        if est_fun is not None and est_params is not None: 
-            E_ab = est_fun(I, M, **est_params)
+        if pwp_params is not None: 
+            E_ab = pwp(I, M, ensure_np_array(total_dm1[M.dm_mask]), ensure_np_array(total_dm2[M.dm_mask]), **pwp_params)
         else:
             E_ab = I.calc_wf()
         
@@ -117,7 +128,7 @@ def run(I,
         res = minimize(val_and_grad, 
                        jac=True, 
                        x0=del_acts0,
-                       args=(M, total_acts, E_ab, reg_cond, control_mask), 
+                       args=(M, total_acts, E_ab, control_mask, I.wavelength.to_value(u.m), reg_cond), 
                        method='L-BFGS-B',
                        tol=bfgs_tol,
                        options=bfgs_opts,
@@ -134,9 +145,14 @@ def run(I,
         image_ni = I.snap()
         mean_ni = xp.mean(image_ni[control_mask])
 
-        all_ims.append(copy.copy(image_ni))
-        all_efs.append(copy.copy(E_ab))
-        all_commands.append(xp.array([total_dm1, total_dm2]))
+        data['images'].append(copy.copy(image_ni))
+        data['efields'].append(copy.copy(E_ab))
+        data['dm1_commands'].append(copy.copy(total_dm1))
+        data['del_dm1_commands'].append(copy.copy(del_dm1))
+        data['dm2_commands'].append(copy.copy(total_dm2))
+        data['del_dm2_commands'].append(copy.copy(del_dm2))
+        data['bfgs_tols'].append(bfgs_tol)
+        data['reg_conds'].append(reg_cond)
         
         imshow3(del_dm1, del_dm2, image_ni, 
                 f'$\delta$DM1', f'$\delta$DM2', 
@@ -144,6 +160,6 @@ def run(I,
                 cmap1='viridis', cmap2='viridis', 
                 pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=1e-10)
 
-    return all_ims, all_efs, all_commands
+    return data
 
 

@@ -21,12 +21,12 @@ image = PlaneType.image
 from scipy.signal import windows
 
 import os
+data_path = Path(os.path.dirname(__file__))
 print(os.path.dirname(__file__))
 
 class CORO():
 
     def __init__(self,
-                 wavelength=650e-9*u.m, 
                  dm1_ref=xp.zeros((34,34)),
                  dm2_ref=xp.zeros((34,34)),
                  d_dm1_dm2=283.569*u.mm, 
@@ -35,7 +35,10 @@ class CORO():
                  use_aps=False,
                 ):
         
-        self.wavelength_c = 650e-9*u.m
+        self.wavelength_c = 650e-9
+        self.wavelength = self.wavelength_c
+        self.waves = np.array([self.wavelength_c])
+
         self.total_pupil_diam = 6.5*u.m
         self.pupil_diam = 9.6*u.mm
         self.lyot_pupil_diam = 400/500 * self.pupil_diam
@@ -81,20 +84,19 @@ class CORO():
         self.N = int(self.npix*self.oversample)
         self.npsf = 100
         self.psf_pixelscale = 5e-6*u.m/u.pix
-        self.um_per_lamD = (self.wavelength_c*self.fl_oap9/(self.lyot_diam)).to(u.um)
+        self.um_per_lamD = (self.wavelength_c*u.m * self.fl_oap9/(self.lyot_diam)).to(u.um)
         self.psf_pixelscale_lamDc = self.psf_pixelscale.to_value(u.um/u.pix)/self.um_per_lamD.value
-        self.wavelength = wavelength.to(u.m)
 
-        APERTURE = xp.array(fits.getdata('aperture_gray_1000.fits'))
+        APERTURE = xp.array(fits.getdata(data_path/'aperture_gray_1000.fits'))
         self.APMASK = APERTURE>0
         WFE = xp.ones((self.npix,self.npix), dtype=complex) if WFE is None else WFE
-        LYOT = xp.array(fits.getdata('lyot_90_gray_1000.fits'))
+        LYOT = xp.array(fits.getdata(data_path/'lyot_90_gray_1000.fits'))
         
         self.APERTURE = poppy.ArrayOpticalElement(transmission=APERTURE, 
                                                   pixelscale=self.pupil_diam/(self.npix*u.pix),
                                                   name='Pupil')
         self.WFE = poppy.ArrayOpticalElement(transmission=xp.abs(WFE), 
-                                             opd=xp.angle(WFE)*self.wavelength_c.to_value(u.m)/(2*np.pi),
+                                             opd=xp.angle(WFE)*self.wavelength_c/(2*np.pi),
                                              pixelscale=self.pupil_diam/(self.npix*u.pix),
                                              name='Pupil WFE')
         self.LYOT = poppy.ArrayOpticalElement(transmission=LYOT, 
@@ -153,15 +155,6 @@ class CORO():
     def getattr(self, attr):
         return getattr(self, attr)
     
-    @property
-    def wavelength(self):
-        return self._wavelength
-
-    @wavelength.setter
-    def wavelength(self, wl):
-        self._wavelength = wl
-        self.psf_pixelscale_lamD = self.psf_pixelscale_lamDc * (self.wavelength_c/wl).decompose().value
-
     def reset_dms(self):
         self.set_dm1(self.dm1_ref)
         self.set_dm2(self.dm2_ref)
@@ -278,7 +271,7 @@ class CORO():
         return fosys_to_fpm, fosys_to_image
         
     def init_inwave(self):
-        inwave = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength,
+        inwave = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, wavelength=self.wavelength*u.m,
                                         npix=self.npix, oversample=self.oversample)
         return inwave
     
@@ -318,7 +311,7 @@ class CORO():
 
     def calc_wfs(self, quiet=False):
         start = time.time()
-        if not quiet: print('Propagating wavelength {:.3f}.'.format(self.wavelength.to(u.nm)))
+        if not quiet: print('Propagating wavelength {:.3f}m.'.format(self.wavelength))
         self.return_pupil = False
         fosys_to_fpm, fosys_to_scicam = self.init_fosys()
         ep_inwave = self.init_inwave()
@@ -347,7 +340,13 @@ class CORO():
         return final_wf[0].wavefront/xp.sqrt(self.Imax_ref)
     
     def snap(self): # method for getting the final image
-        return xp.abs(self.calc_wf())**2
+        Nwaves = len(self.waves)
+        im = 0.0
+        for i in range(Nwaves):
+            self.wavelength = self.waves[i]
+            fpwf = self.calc_wf()
+            im += xp.abs( fpwf )**2 / Nwaves
+        return im
     
     def calc_pupil(self):
         self.return_pupil = True
@@ -358,6 +357,7 @@ class CORO():
         # print(pupil_wf[0].wavelength)
         amp = xp.abs(pupil) * self.APERTURE.amplitude
         phs = xp.angle(pupil) * self.APERTURE.amplitude
-        return amp*xp.exp(1j*phs)
+        opd = phs * self.wavelength_c / (2*xp.pi)
+        return amp, opd
     
         

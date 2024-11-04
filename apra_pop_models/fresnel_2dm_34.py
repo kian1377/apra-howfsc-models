@@ -37,7 +37,7 @@ class CORO():
         
         self.wavelength_c = 650e-9
         self.wavelength = self.wavelength_c
-        self.waves = np.array([self.wavelength_c])
+        self.bandpasses = np.array([self.wavelength_c])
 
         self.total_pupil_diam = 6.5*u.m
         self.pupil_diam = 9.6*u.mm
@@ -339,16 +339,23 @@ class CORO():
         _, final_wf = fosys_to_scicam.calc_psf(inwave=fpm_inwave, normalize='none', return_final=True)
         return final_wf[0].wavefront/xp.sqrt(self.Imax_ref)
     
-    def snap(self): # method for getting the final image
-        Nwaves = len(self.waves)
+    def snap(self, bp=0): # method for getting the final image
+        if bp==0:
+            waves = self.bandpasses.flatten()
+        else:
+            Nwaves_per_bp = self.bandpasses.shape[1]
+            waves = self.bandpasses[bp-1, :]
+
+        Nwaves = len(waves)
         im = 0.0
         for i in range(Nwaves):
-            self.wavelength = self.waves[i]
+            self.wavelength = waves[i]
             fpwf = self.calc_wf()
             im += xp.abs( fpwf )**2 / Nwaves
         return im
     
     def calc_pupil(self):
+        self.wavelength = self.wavelength_c
         self.return_pupil = True
         fosys_to_pupil = self.init_fosys()
         ep_inwave = self.init_inwave()

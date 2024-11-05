@@ -236,8 +236,12 @@ def val_and_grad(del_acts, M, actuators, E_ab, control_mask, wavelength, r_cond,
 
     # Compute E_dm using the forward DM model
     E_FP_nom, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(actuators, wavelength, use_vortex=True, return_ints=True,) # make sure to do the array indexing
-    E_DMs = M.forward(actuators+del_acts, wavelength, use_vortex=True) # make sure to do the array indexing
-    E_DMs = E_DMs - E_FP_nom
+    E_FP_delDMs = M.forward(actuators+del_acts, wavelength, use_vortex=True) # make sure to do the array indexing
+    E_DMs = E_FP_delDMs - E_FP_nom
+
+    # E_FP_nom = M.forward(actuators, wavelength, use_vortex=True) # make sure to do the array indexing
+    # E_DMs, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(actuators+del_acts, wavelength, use_vortex=True, return_ints=True,) # make sure to do the array indexing
+    # E_DMs = E_DMs - E_FP_nom
 
     # compute the cost function
     delE = E_ab + E_DMs

@@ -255,16 +255,12 @@ def plot_data(data, vmin=1e-10, vmax=1e-4):
     ref_im = ensure_np_array(data['images'][0])
     best_im = ensure_np_array(data['images'][ibest])
 
-    fig,ax = plt.subplots(nrows=1, ncols=3, figsize=(15,10), dpi=125, gridspec_kw={'width_ratios': [1, 1, 1.35], })
+    fig,ax = plt.subplots(nrows=1, ncols=3, figsize=(15,10), dpi=125)
     ext = psf_pixelscale_lamD*npsf/2
     extent = [-ext, ext, -ext, ext]
 
     im1 = ax[0].imshow(ref_im, norm=LogNorm(vmax=vmax, vmin=vmin), cmap='magma', extent=extent)
     ax[0].set_title(f'Reference Image:\nMean Contrast = {mean_nis[0]:.2e}', fontsize=14)
-    # divider = make_axes_locatable(ax[0])
-    # cax = divider.append_axes("right", size="4%", pad=0.075)
-    # cbar = fig.colorbar(im1, cax=cax)
-    # cbar.ax.set_ylabel('NI', rotation=0, labelpad=7)
     ax[0].set_position([0, 0.3, 0.25, 0.25]) # [left, bottom, width, height]
 
     im2 = ax[1].imshow( best_im, norm=LogNorm(vmax=vmax, vmin=vmin), cmap='magma', extent=extent)
@@ -273,7 +269,7 @@ def plot_data(data, vmin=1e-10, vmax=1e-4):
     cax = divider.append_axes("right", size="4%", pad=0.075)
     cbar = fig.colorbar(im2, cax=cax,)
     cbar.ax.set_ylabel('NI', rotation=0, labelpad=7)
-    ax[1].set_position([0.212, 0.3, 0.25, 0.25])
+    ax[1].set_position([0.21, 0.3, 0.25, 0.25])
 
     ax[0].set_ylabel('Y [$\lambda/D$]', fontsize=12, labelpad=-5)
     ax[0].set_xlabel('X [$\lambda/D$]', fontsize=12, labelpad=5)
@@ -287,9 +283,7 @@ def plot_data(data, vmin=1e-10, vmax=1e-4):
     ax[2].set_ylim([vmin, vmax])
     ax[2].set_xticks(np.arange(0,Nitr,2))
     ax[2].set_position([0.525, 0.3, 0.25, 0.25])
-    # ax[2].set_aspect(1.15)
 
-    # plt.subplots_adjust(wspace=0.45)
     # fig.savefig('figs/iefc_bb_plots.pdf', format='pdf', bbox_inches="tight")
 
 

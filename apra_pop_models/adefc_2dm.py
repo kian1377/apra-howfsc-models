@@ -213,7 +213,6 @@ def run_bb(I,
         del_acts = gain * res.x
         del_dm1[M.dm_mask] = del_acts[:M.Nacts//2]
         del_dm2[M.dm_mask] = del_acts[M.Nacts//2:]
-
         I.add_dm1(del_dm1)
         I.add_dm2(del_dm2)
         total_dm1, total_dm2 = ( copy.copy(I.get_dm1()), copy.copy(I.get_dm2()) )

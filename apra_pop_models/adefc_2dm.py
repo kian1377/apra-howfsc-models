@@ -84,7 +84,6 @@ def run(I,
         control_mask,
         data,
         pwp_params=None,
-        broadband=False, 
         Nitr=3, 
         reg_cond=1e-2,
         bfgs_tol=1e-3,
@@ -112,11 +111,26 @@ def run(I,
             E_ab = I.calc_wf()
         
         print('Computing EFC command with L-BFGS')
-        total_acts = ensure_np_array(xp.concatenate([total_dm1[M.dm_mask], total_dm2[M.dm_mask]]))
+        current_acts = xp.concatenate([total_dm1[M.dm_mask], total_dm2[M.dm_mask]])
+        E_FP_nom, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(current_acts, I.wavelength, use_vortex=True, return_ints=True,)
+
+        rmad_vars = { 
+            'current_acts':current_acts,
+            'E_ab':E_ab, 
+            'E_FP_nom':E_FP_nom,
+            'E_EP':E_EP,
+            'E_DM2P':E_DM2P,
+            'DM1_PHASOR':DM1_PHASOR,
+            'DM2_PHASOR':DM2_PHASOR,
+            'control_mask':control_mask,
+            'wavelength':I.wavelength,
+            'r_cond':reg_cond,
+        }
+
         res = minimize(val_and_grad, 
                        jac=True, 
                        x0=del_acts0,
-                       args=(M, total_acts, E_ab, control_mask, I.wavelength_c, reg_cond), 
+                       args=(M, rmad_vars), 
                        method='L-BFGS-B',
                        tol=bfgs_tol,
                        options=bfgs_opts,
@@ -163,6 +177,22 @@ def calc_wfs(I, waves, control_mask, plot=False):
 
     return E_abs
 
+def get_forward_vars(M, current_acts, est_waves):
+    Nwaves = est_waves.shape[0]
+    E_FP_noms = []
+    E_EPs = []
+    E_DM2Ps = []
+    DM1_PHASORs = []
+    DM2_PHASORs = []
+    for i in range(Nwaves):
+        E_FP_nom, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(current_acts, est_waves[i], use_vortex=True, return_ints=True,)
+        E_FP_noms.append(E_FP_nom)
+        E_EPs.append(E_EP)
+        E_DM2Ps.append(E_DM2P)
+        DM1_PHASORs.append(DM1_PHASOR)
+        DM2_PHASORs.append(DM2_PHASOR)
+    return xp.array(E_FP_noms), xp.array(E_EPs), xp.array(E_DM2Ps), xp.array(DM1_PHASORs), xp.array(DM2_PHASORs)
+
 def run_bb(I, 
         M, 
         val_and_grad,
@@ -179,7 +209,7 @@ def run_bb(I,
     
     Nbps = I.bandpasses.shape[0]
     Nwaves_per_bp = I.bandpasses.shape[1]
-    est_waves = I.bandpasses[:, Nwaves_per_bp//2]
+    control_waves = I.bandpasses[:, Nwaves_per_bp//2]
 
     starting_itr = len(data['images'])
     if len(data['dm1_commands'])>0:
@@ -197,14 +227,27 @@ def run_bb(I,
         if pwp_params is not None: 
             E_abs = pwp_bb(I, M, ensure_np_array(total_dm1[M.dm_mask]), ensure_np_array(total_dm2[M.dm_mask]), **pwp_params)
         else:
-            E_abs = calc_wfs(I, est_waves, control_mask)
+            E_abs = calc_wfs(I, control_waves, control_mask)
         
         print('Computing EFC command with L-BFGS')
-        total_acts = ensure_np_array(xp.concatenate([total_dm1[M.dm_mask], total_dm2[M.dm_mask]]))
+        current_acts = xp.concatenate([total_dm1[M.dm_mask], total_dm2[M.dm_mask]])
+        E_FP_noms, E_EPs, E_DM2Ps, DM1_PHASORs, DM2_PHASORs = get_forward_vars(M, current_acts, control_waves)
+        rmad_vars = { 
+            'current_acts':current_acts,
+            'E_abs':E_abs, 
+            'E_FP_noms':E_FP_noms,
+            'E_EPs':E_EPs,
+            'E_DM2Ps':E_DM2Ps,
+            'DM1_PHASORs':DM1_PHASORs,
+            'DM2_PHASORs':DM2_PHASORs,
+            'control_mask':control_mask,
+            'control_waves':control_waves,
+            'r_cond':reg_cond,
+        }
         res = minimize(val_and_grad, 
                        jac=True, 
                        x0=del_acts0,
-                       args=(M, total_acts, E_abs, control_mask, est_waves, reg_cond), 
+                       args=(M, rmad_vars), 
                        method='L-BFGS-B',
                        tol=bfgs_tol,
                        options=bfgs_opts,

@@ -390,7 +390,7 @@ def val_and_grad_bb(
     #     # TODO: implement weights for each wavelength correctly
 
     J_bb = np.sum(mono_Js)/Nwaves + ensure_np_array( r_cond * del_acts_waves.dot(del_acts_waves) )
-    dJ_dA_bb = np.sum(mono_dJ_dAs, axis=0) + ensure_np_array( r_cond * 2*del_acts_waves )
+    dJ_dA_bb = np.sum(mono_dJ_dAs, axis=0)/Nwaves + ensure_np_array( r_cond * 2*del_acts_waves )
     
     return J_bb, dJ_dA_bb
 

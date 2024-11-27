@@ -58,6 +58,8 @@ def ensure_np_array(arr):
         return arr
     elif jax_avail and isinstance(arr, jax.numpy.ndarray):
         return np.asarray(arr)
+    elif np.isscalar(arr):  # Handle scalar values
+        return np.array(arr)
     else:
         return arr.get()
         

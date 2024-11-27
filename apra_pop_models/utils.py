@@ -17,11 +17,13 @@ def make_grid(npix, pixelscale=1, half_shift=False):
 
 def pad_or_crop( arr_in, npix ):
     n_arr_in = arr_in.shape[0]
+    npix = int(npix)
     if n_arr_in == npix:
         return arr_in
     elif npix < n_arr_in:
         x1 = n_arr_in // 2 - npix // 2
         x2 = x1 + npix
+        # print("hello")
         arr_out = arr_in[x1:x2,x1:x2].copy()
     else:
         arr_out = xp.zeros((npix,npix), dtype=arr_in.dtype)

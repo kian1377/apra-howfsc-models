@@ -187,22 +187,27 @@ class MODEL():
             imshows.fancy_plot_forward(dm1_command, dm2_command, DM1_PHASOR, DM2_PHASOR, E_PUP, E_LP, E_FP, npix=self.npix, wavelength=wavelength)
 
         if return_ints:
-            os.makedirs('/test', exist_ok=True)
+            current_dir = Path.cwd()
+            test_dir = current_dir / 'test'
+            test_dir.mkdir(exist_ok=True)
+
+            matrices = {
+                'E_FP': E_FP,
+                'E_EP': E_EP, 
+                'E_DM2P': E_DM2P,
+                'DM1_PHASOR': DM1_PHASOR,
+                'DM2_PHASOR': DM2_PHASOR
+            }
 
             for name, matrix in matrices.items():
                 np_matrix = np.array(matrix)
-                
-                # Reshape the matrix into a 2D array if it isn't already
-                if np_matrix.ndim > 2:
-                    np_matrix = np_matrix.reshape(np_matrix.shape[0], -1)
-                
-                # Create a DataFrame with alternating real/imaginary columns
-                cols = []
-                for i in range(np_matrix.shape[1]):
-                    cols.extend([f'col{i}_real', f'col{i}_imag'])
-                    
-                df = pd.DataFrame(np.column_stack((np_matrix.real, np_matrix.imag)), columns=cols)
-                df.to_csv(f'/test/{name}.csv', index=False)
+                file_path = test_dir / f'{name}.csv'
+
+                # Using relative path './test/'
+                df = pd.DataFrame(np.column_stack((np_matrix.real, np_matrix.imag)), 
+                                columns=[f'col{i}_real' for i in range(np_matrix.shape[1])] + 
+                                        [f'col{i}_imag' for i in range(np_matrix.shape[1])])
+                df.to_csv(file_path, index=False)
             return E_FP, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR
         else:
             return E_FP

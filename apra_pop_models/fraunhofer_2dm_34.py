@@ -187,30 +187,10 @@ class MODEL():
             imshows.fancy_plot_forward(dm1_command, dm2_command, DM1_PHASOR, DM2_PHASOR, E_PUP, E_LP, E_FP, npix=self.npix, wavelength=wavelength)
 
         if return_ints:
-            current_dir = Path.cwd()
-            test_dir = current_dir / 'test'
-            test_dir.mkdir(exist_ok=True)
-
-            matrices = {
-                'E_FP': E_FP,
-                'E_EP': E_EP, 
-                'E_DM2P': E_DM2P,
-                'DM1_PHASOR': DM1_PHASOR,
-                'DM2_PHASOR': DM2_PHASOR
-            }
-
-            for name, matrix in matrices.items():
-                np_matrix = np.array(matrix)
-                file_path = test_dir / f'{name}.csv'
-
-                # Using relative path './test/'
-                df = pd.DataFrame(np.column_stack((np_matrix.real, np_matrix.imag)), 
-                                columns=[f'col{i}_real' for i in range(np_matrix.shape[1])] + 
-                                        [f'col{i}_imag' for i in range(np_matrix.shape[1])])
-                df.to_csv(file_path, index=False)
             return E_FP, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR
         else:
-            return E_FP
+            # return E_FP
+            return E_FP, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR
         
     def getattr(self, attr):
         return getattr(self, attr)
@@ -277,7 +257,7 @@ def val_and_grad(
 
     # Compute E_dm using the forward DM model
     # E_FP_nom, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(actuators, wavelength, use_vortex=True, return_ints=True,) # make sure to do the array indexing
-    E_FP_delDMs = M.forward(current_acts+del_acts, wavelength, use_vortex=True) # make sure to do the array indexing
+    E_FP_delDMs, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(current_acts+del_acts, wavelength, use_vortex=True) # make sure to do the array indexing
     E_DMs = E_FP_delDMs - E_FP_nom
 
     # compute the cost function
@@ -358,6 +338,74 @@ def val_and_grad(
     if fancy_plot: 
         imshows.fancy_plot_adjoint(dJ_dE_DMs, dJ_dE_LP, dJ_dE_PUP, dJ_dS_DM1, dJ_dS_DM2, dJ_dA1, dJ_dA2, control_mask)
 
+    current_dir = Path.cwd()
+    test_dir = current_dir / 'adjoint_vars'
+    test_dir.mkdir(exist_ok=True)
+    matrices = {
+        'E_FP_nom': E_FP_nom,
+        'E_EP': E_EP,
+        'E_DM2P': E_DM2P,
+        'DM1_PHASOR': DM1_PHASOR,
+        'DM2_PHASOR': DM2_PHASOR,
+        'wavelength': wavelength,
+        'control_mask': control_mask,
+        'r_cond': r_cond,
+        'E_FP_delDMs': E_FP_delDMs,
+        'E_ab_l2norm': E_ab_l2norm,
+        'E_DMs': E_DMs,
+        'delE': delE,
+        'delE_vec': delE_vec,
+        'J_delE': J_delE,
+        'J_c': J_c,
+        'J': J,
+        'delE_masked': delE_masked,
+        'dJ_dE_DMs': dJ_dE_DMs,
+        'dJ_dE_LS': dJ_dE_LS,
+        'dJ_dE_LP': dJ_dE_LP,
+        'dJ_dE_LP_fft': dJ_dE_LP_fft,
+        'dJ_dE_FPM_fft': dJ_dE_FPM_fft,
+        'dJ_dE_FP_fft': dJ_dE_FP_fft,
+        'dJ_dE_PUP_fft': dJ_dE_PUP_fft,
+        'dJ_dE_PUP_fft2': dJ_dE_PUP_fft2,
+        'dJ_dE_LP_mft': dJ_dE_LP_mft,
+        'dJ_dE_FPM_mft': dJ_dE_FPM_mft,
+        'dJ_dE_FP_mft': dJ_dE_FP_mft,
+        'dJ_dE_PUP_mft': dJ_dE_PUP_mft,
+        'dJ_dE_PUP': dJ_dE_PUP,
+        'dJ_dE_DM2': dJ_dE_DM2,
+        'dJ_dE_DM2P': dJ_dE_DM2P,
+        'dJ_dE_DM1': dJ_dE_DM1,
+        'dJ_dS_DM2': dJ_dS_DM2,
+        'dJ_dS_DM1': dJ_dS_DM1,
+        'dJ_dS_DM2_rot': dJ_dS_DM2_rot,
+        'dJ_dS_DM1_rot': dJ_dS_DM1_rot,
+        'dJ_dS_DM2_rot2': dJ_dS_DM2_rot2,
+        'dJ_dS_DM1_rot2': dJ_dS_DM1_rot2,
+        'x2_bar': x2_bar,
+        'x1_bar': x1_bar,
+        'dJ_dA2': dJ_dA2,
+        'x2_bar2': x2_bar2,
+        'x1_bar2': x1_bar2,
+        'dJ_dA1': dJ_dA1,
+        'dJ_dS_DM1_rot2': dJ_dS_DM1_rot2,
+        'dJ_dA': dJ_dA
+    }
+
+    N = 10  # adjust based on your needs
+    for name, matrix in matrices.items():
+        np_matrix = np.array(matrix).flatten()[::N]
+        file_path = test_dir / f'{name}.csv'
+        
+        # Handle complex and real data
+        if np.iscomplexobj(np_matrix):
+            data = {'real': np_matrix.flatten().real,
+                    'imag': np_matrix.flatten().imag}
+        else:
+            data = {'real': np_matrix.flatten()}
+        
+        df = pd.DataFrame(data)
+        df.to_csv(file_path, index=False)
+
     return ensure_np_array(J), ensure_np_array(dJ_dA)
 
 def val_and_grad_bb(
@@ -415,6 +463,3 @@ def val_and_grad_bb(
     dJ_dA_bb = np.sum(mono_dJ_dAs, axis=0)/Nwaves + ensure_np_array( r_cond * 2*del_acts_waves )
     
     return J_bb, dJ_dA_bb
-
-
-

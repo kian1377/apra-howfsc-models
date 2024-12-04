@@ -282,25 +282,25 @@ def val_and_grad(
 
     dJ_dE_LP = dJ_dE_LS * utils.pad_or_crop(M.LYOT, M.N)
     if M.flip_lyot: 
-        dJ_dE_LP = xp.rot90(xp.rot90(dJ_dE_LP))
-    if plot: imshows.imshow2(xp.abs(dJ_dE_LP), xp.angle(dJ_dE_LP), 'RMAD Lyot Pupil', npix=1.5*M.npix)
+        dJ_dE_LP2 = xp.rot90(xp.rot90(dJ_dE_LP))
+    if plot: imshows.imshow2(xp.abs(dJ_dE_LP2), xp.angle(dJ_dE_LP2), 'RMAD Lyot Pupil', npix=1.5*M.npix)
 
     # Now we have to split and back-propagate the gradient along the two branches used to model 
     # the vortex. So one branch for the FFT vortex procedure and one for the MFT vortex procedure. 
-    dJ_dE_LP_fft = utils.pad_or_crop(copy.copy(dJ_dE_LP), M.N_vortex_lres)
+    dJ_dE_LP_fft = utils.pad_or_crop(copy.copy(dJ_dE_LP2), M.N_vortex_lres)
     dJ_dE_FPM_fft = props.fft(dJ_dE_LP_fft)
     dJ_dE_FP_fft = M.vortex_lres.conjugate() * (1 - M.lres_window) * dJ_dE_FPM_fft
     dJ_dE_PUP_fft = props.ifft(dJ_dE_FP_fft)
-    dJ_dE_PUP_fft = utils.pad_or_crop(dJ_dE_PUP_fft, M.N)
-    if plot: imshows.imshow2(xp.abs(dJ_dE_PUP_fft), xp.angle(dJ_dE_PUP_fft), 'RMAD FFT Pupil', npix=1.5*M.npix)
+    dJ_dE_PUP_fft2 = utils.pad_or_crop(dJ_dE_PUP_fft, M.N)
+    if plot: imshows.imshow2(xp.abs(dJ_dE_PUP_fft2), xp.angle(dJ_dE_PUP_fft2), 'RMAD FFT Pupil', npix=1.5*M.npix)
 
-    dJ_dE_LP_mft = utils.pad_or_crop(copy.copy(dJ_dE_LP), M.N)
+    dJ_dE_LP_mft = utils.pad_or_crop(copy.copy(dJ_dE_LP2), M.N)
     dJ_dE_FPM_mft = props.mft_forward(dJ_dE_LP_mft,  M.npix, M.N_vortex_hres, M.hres_sampling, convention='-')
     dJ_dE_FP_mft = M.vortex_hres.conjugate() * M.hres_window * M.hres_dot_mask * dJ_dE_FPM_mft
     dJ_dE_PUP_mft = props.mft_reverse(dJ_dE_FP_mft, M.hres_sampling, M.npix, M.N, convention='+')
     if plot: imshows.imshow2(xp.abs(dJ_dE_PUP_mft), xp.angle(dJ_dE_PUP_mft), 'RMAD MFT Pupil', npix=1.5*M.npix)
 
-    dJ_dE_PUP = dJ_dE_PUP_fft + dJ_dE_PUP_mft
+    dJ_dE_PUP = dJ_dE_PUP_fft2 + dJ_dE_PUP_mft
     if plot: imshows.imshow2(xp.abs(dJ_dE_PUP), xp.angle(dJ_dE_PUP), 'RMAD Total Pupil', npix=1.5*M.npix)
 
     dJ_dE_DM2 = props.ang_spec(dJ_dE_PUP, M.wavelength*u.m, M.d_dm1_dm2, M.dm_pxscl)
@@ -315,28 +315,28 @@ def val_and_grad(
     dJ_dS_DM2 = 4*xp.pi/M.wavelength * xp.imag(dJ_dE_DM2 * E_DM2P.conj() * DM2_PHASOR.conj())
     dJ_dS_DM1 = 4*xp.pi/M.wavelength * xp.imag(dJ_dE_DM1 * E_EP.conj() * DM1_PHASOR.conj())
     if M.flip_dm: 
-        dJ_dS_DM1 = xp.rot90(xp.rot90(dJ_dS_DM1))
-        dJ_dS_DM2 = xp.rot90(xp.rot90(dJ_dS_DM2))
-    if plot: imshows.imshow2(xp.real(dJ_dS_DM2), xp.imag(dJ_dS_DM2), 'RMAD DM2 Surface', npix=1.5*M.npix)
-    if plot: imshows.imshow2(xp.real(dJ_dS_DM1), xp.imag(dJ_dS_DM1), 'RMAD DM1 Surface', npix=1.5*M.npix)
+        dJ_dS_DM1_rot = xp.rot90(xp.rot90(dJ_dS_DM1))
+        dJ_dS_DM2_rot = xp.rot90(xp.rot90(dJ_dS_DM2))
+    if plot: imshows.imshow2(xp.real(dJ_dS_DM2_rot), xp.imag(dJ_dS_DM2_rot), 'RMAD DM2 Surface', npix=1.5*M.npix)
+    if plot: imshows.imshow2(xp.real(dJ_dS_DM1_rot), xp.imag(dJ_dS_DM1_rot), 'RMAD DM1 Surface', npix=1.5*M.npix)
 
     # Now pad back to the array size fo the DM surface to back propagate through the adjoint DM model
-    dJ_dS_DM2 = utils.pad_or_crop(dJ_dS_DM2, M.Nsurf)
-    x2_bar = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM2)))
+    dJ_dS_DM2_rot2 = utils.pad_or_crop(dJ_dS_DM2_rot, M.Nsurf)
+    x2_bar = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM2_rot2)))
     x1_bar = x2_bar * M.inf_fun_fft.conj()
     dJ_dA2 = M.Mx_back@x1_bar@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
     if plot: imshows.imshow2(dJ_dA2.real, dJ_dA2.imag, 'RMAD DM2 Actuators')
 
-    dJ_dS_DM1 = utils.pad_or_crop(dJ_dS_DM1, M.Nsurf)
-    x2_bar = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM1)))
-    x1_bar = x2_bar * M.inf_fun_fft.conj()
-    dJ_dA1 = M.Mx_back@x1_bar@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
+    dJ_dS_DM1_rot2 = utils.pad_or_crop(dJ_dS_DM1_rot, M.Nsurf)
+    x2_bar2 = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM1_rot2)))
+    x1_bar2 = x2_bar2 * M.inf_fun_fft.conj()
+    dJ_dA1 = M.Mx_back@x1_bar2@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
     if plot: imshows.imshow2(dJ_dA1.real, dJ_dA1.imag, 'RMAD DM1 Actuators')
 
     dJ_dA = xp.concatenate([dJ_dA1[M.dm_mask].real, dJ_dA2[M.dm_mask].real]) + xp.array( r_cond * 2*del_acts_waves )
 
     if fancy_plot: 
-        imshows.fancy_plot_adjoint(dJ_dE_DMs, dJ_dE_LP, dJ_dE_PUP, dJ_dS_DM1, dJ_dS_DM2, dJ_dA1, dJ_dA2, control_mask)
+        imshows.fancy_plot_adjoint(dJ_dE_DMs, dJ_dE_LP2, dJ_dE_PUP, dJ_dS_DM1, dJ_dS_DM2, dJ_dA1, dJ_dA2, control_mask)
 
     current_dir = Path.cwd()
     test_dir = current_dir / 'adjoint_vars'
@@ -362,6 +362,7 @@ def val_and_grad(
         'dJ_dE_DMs': dJ_dE_DMs,
         'dJ_dE_LS': dJ_dE_LS,
         'dJ_dE_LP': dJ_dE_LP,
+        'dJ_dE_LP2': dJ_dE_LP2,
         'dJ_dE_LP_fft': dJ_dE_LP_fft,
         'dJ_dE_FPM_fft': dJ_dE_FPM_fft,
         'dJ_dE_FP_fft': dJ_dE_FP_fft,

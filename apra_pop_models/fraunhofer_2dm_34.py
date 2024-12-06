@@ -51,7 +51,7 @@ class MODEL():
         # initialize sampling parameters and load masks
         self.npix = 1000
         self.oversample = 4.096
-        self.N = int(self.npix*self.oversample)
+        self.N = int(self.npix*self.oversample) # 4096
 
         pwf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, npix=self.npix, oversample=1) # pupil wavefront
         self.APERTURE = poppy.CircularAperture(radius=self.pupil_diam/2).get_transmission(pwf)
@@ -63,14 +63,24 @@ class MODEL():
         self.Nact = 34
         self.act_spacing = 300e-6*u.m
         self.dm_pxscl = self.dm_beam_diam/(self.npix * u.pix)
+        print(f"dm_pxscl is {self.dm_pxscl}")
         self.inf_sampling = self.act_spacing.to_value(u.m)/self.dm_pxscl.to_value(u.m/u.pix)
-        self.inf_fun = dm.make_gaussian_inf_fun(act_spacing=self.act_spacing, sampling=self.inf_sampling, coupling=0.15, Nact=self.Nact+2)
+        print(f"inf_sampling is {self.inf_sampling}")
+        # self.inf_fun = dm.make_gaussian_inf_fun(act_spacing=self.act_spacing, sampling=self.inf_sampling, coupling=0.15, Nact=self.Nact+2)
+        self.inf_fun = dm.make_gaussian_inf_fun(act_spacing=self.act_spacing, sampling=self.inf_sampling, coupling=0.15)
+        # adjusted the # actuators to match C optical model (Nact defaults to 4 in make_gaussian_inf_fun)
+        # pad influence function up to 2048 x 2048
+        self.inf_fun = utils.pad_or_crop(self.inf_fun, 2048)
         self.Nsurf = self.inf_fun.shape[0]
+        print(f"Nsurf is {self.Nsurf}")
 
         y,x = (xp.indices((self.Nact, self.Nact)) - self.Nact//2 + 1/2)
         r = xp.sqrt(x**2 + y**2)
         self.dm_mask = r<(self.Nact/2 + 1/2)
+        # print(f"dm_mask is {self.dm_mask}")
+
         self.Nacts = int(2*self.dm_mask.sum())
+        print(f"Nacts is {self.Nacts}")
 
         self.inf_fun_fft = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(self.inf_fun,)))
         # DM command coordinates
@@ -118,13 +128,14 @@ class MODEL():
         self.dm2_command = xp.zeros((self.Nact, self.Nact))
 
     def forward(self, actuators, wavelength, use_vortex=True, return_ints=False, plot=False, fancy_plot=False):
+        print("Entered the forward model!")
         dm1_command = xp.zeros((self.Nact,self.Nact))
         dm1_command[self.dm_mask] = xp.array(actuators[:self.Nacts//2])
         dm1_mft = self.Mx@dm1_command@self.My
         dm1_surf_fft = self.inf_fun_fft * dm1_mft
         dm1_surf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(dm1_surf_fft,))).real
         dm1_surf = utils.pad_or_crop(dm1_surf, self.N)
-        DM1_PHASOR = xp.exp(1j * 4*xp.pi/wavelength * dm1_surf)
+        DM1_PHASOR = xp.exp(1j * 4*xp.pi/wavelength * dm1_surf) # 4096 x 4096
 
         dm2_command = xp.zeros((self.Nact,self.Nact))
         dm2_command[self.dm_mask] = xp.array(actuators[self.Nacts//2:])
@@ -132,7 +143,7 @@ class MODEL():
         dm2_surf_fft = self.inf_fun_fft * dm2_mft
         dm2_surf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(dm2_surf_fft,))).real
         dm2_surf = utils.pad_or_crop(dm2_surf, self.N)
-        DM2_PHASOR = xp.exp(1j * 4*xp.pi/wavelength * dm2_surf)
+        DM2_PHASOR = xp.exp(1j * 4*xp.pi/wavelength * dm2_surf) # 4096 x 4096
 
         if self.flip_dm: 
             DM1_PHASOR = xp.rot90(xp.rot90(DM1_PHASOR))
@@ -140,6 +151,9 @@ class MODEL():
 
         # Initialize the wavefront
         WFE = utils.pad_or_crop(self.AMP, self.N) * xp.exp(1j * 2*xp.pi/wavelength * utils.pad_or_crop(self.OPD, self.N))
+        print(f"self.AMP is shape {np.shape(self.AMP)}")
+        print(f"self.N is {self.N}")
+
         E_EP = utils.pad_or_crop(self.APERTURE.astype(xp.complex128), self.N) * WFE / xp.sqrt(self.Imax_ref)
         if plot: imshows.imshow2(xp.abs(E_EP), xp.angle(E_EP), 'Entrance Pupil WF', npix=1.5*self.npix)
 
@@ -181,7 +195,7 @@ class MODEL():
         
         psf_pixelscale_lamD = self.psf_pixelscale_lamDc * self.wavelength_c/wavelength
         E_FP = props.mft_forward(E_LS, self.npix * self.lyot_ratio, self.npsf, psf_pixelscale_lamD)
-        if plot: imshows.imshow2(xp.abs(E_FP)**2, xp.angle(E_FP), lognorm1=True)
+        if plot: imshows.imshow2(xp.abs(E_FP)**2, xp.angle(E_FP), 'E_FP', lognorm1=True)
 
         if fancy_plot: 
             imshows.fancy_plot_forward(dm1_command, dm2_command, DM1_PHASOR, DM2_PHASOR, E_PUP, E_LP, E_FP, npix=self.npix, wavelength=wavelength)
@@ -238,6 +252,7 @@ def val_and_grad(
         plot=False, 
         fancy_plot=False,
     ):
+    print("Entered val_and_grad")
     # Convert array arguments into correct types
     del_acts = xp.array(del_acts)
     del_acts_waves = del_acts/M.wavelength_c
@@ -257,7 +272,7 @@ def val_and_grad(
 
     # Compute E_dm using the forward DM model
     # E_FP_nom, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(actuators, wavelength, use_vortex=True, return_ints=True,) # make sure to do the array indexing
-    E_FP_delDMs, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(current_acts+del_acts, wavelength, use_vortex=True) # make sure to do the array indexing
+    E_FP_delDMs, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(current_acts+del_acts, wavelength, use_vortex=True, plot=True) # make sure to do the array indexing
     E_DMs = E_FP_delDMs - E_FP_nom
 
     # compute the cost function
@@ -282,25 +297,29 @@ def val_and_grad(
 
     dJ_dE_LP = dJ_dE_LS * utils.pad_or_crop(M.LYOT, M.N)
     if M.flip_lyot: 
-        dJ_dE_LP2 = xp.rot90(xp.rot90(dJ_dE_LP))
-    if plot: imshows.imshow2(xp.abs(dJ_dE_LP2), xp.angle(dJ_dE_LP2), 'RMAD Lyot Pupil', npix=1.5*M.npix)
+        # dJ_dE_LP2 = xp.rot90(xp.rot90(dJ_dE_LP))
+        dJ_dE_LP = xp.rot90(xp.rot90(dJ_dE_LP))
+    if plot: imshows.imshow2(xp.abs(dJ_dE_LP), xp.angle(dJ_dE_LP), 'RMAD Lyot Pupil', npix=1.5*M.npix)
 
     # Now we have to split and back-propagate the gradient along the two branches used to model 
     # the vortex. So one branch for the FFT vortex procedure and one for the MFT vortex procedure. 
-    dJ_dE_LP_fft = utils.pad_or_crop(copy.copy(dJ_dE_LP2), M.N_vortex_lres)
+    # dJ_dE_LP_fft = utils.pad_or_crop(copy.copy(dJ_dE_LP2), M.N_vortex_lres)
+    dJ_dE_LP_fft = utils.pad_or_crop(copy.copy(dJ_dE_LP), M.N_vortex_lres)
     dJ_dE_FPM_fft = props.fft(dJ_dE_LP_fft)
     dJ_dE_FP_fft = M.vortex_lres.conjugate() * (1 - M.lres_window) * dJ_dE_FPM_fft
     dJ_dE_PUP_fft = props.ifft(dJ_dE_FP_fft)
-    dJ_dE_PUP_fft2 = utils.pad_or_crop(dJ_dE_PUP_fft, M.N)
-    if plot: imshows.imshow2(xp.abs(dJ_dE_PUP_fft2), xp.angle(dJ_dE_PUP_fft2), 'RMAD FFT Pupil', npix=1.5*M.npix)
+    # dJ_dE_PUP_fft2 = utils.pad_or_crop(dJ_dE_PUP_fft, M.N)
+    dJ_dE_PUP_fft = utils.pad_or_crop(dJ_dE_PUP_fft, M.N)
+    if plot: imshows.imshow2(xp.abs(dJ_dE_PUP_fft), xp.angle(dJ_dE_PUP_fft), 'RMAD FFT Pupil', npix=1.5*M.npix)
 
-    dJ_dE_LP_mft = utils.pad_or_crop(copy.copy(dJ_dE_LP2), M.N)
+    # dJ_dE_LP_mft = utils.pad_or_crop(copy.copy(dJ_dE_LP2), M.N)
+    dJ_dE_LP_mft = utils.pad_or_crop(copy.copy(dJ_dE_LP), M.N)
     dJ_dE_FPM_mft = props.mft_forward(dJ_dE_LP_mft,  M.npix, M.N_vortex_hres, M.hres_sampling, convention='-')
     dJ_dE_FP_mft = M.vortex_hres.conjugate() * M.hres_window * M.hres_dot_mask * dJ_dE_FPM_mft
     dJ_dE_PUP_mft = props.mft_reverse(dJ_dE_FP_mft, M.hres_sampling, M.npix, M.N, convention='+')
     if plot: imshows.imshow2(xp.abs(dJ_dE_PUP_mft), xp.angle(dJ_dE_PUP_mft), 'RMAD MFT Pupil', npix=1.5*M.npix)
 
-    dJ_dE_PUP = dJ_dE_PUP_fft2 + dJ_dE_PUP_mft
+    dJ_dE_PUP = dJ_dE_PUP_fft + dJ_dE_PUP_mft
     if plot: imshows.imshow2(xp.abs(dJ_dE_PUP), xp.angle(dJ_dE_PUP), 'RMAD Total Pupil', npix=1.5*M.npix)
 
     dJ_dE_DM2 = props.ang_spec(dJ_dE_PUP, M.wavelength*u.m, M.d_dm1_dm2, M.dm_pxscl)
@@ -315,32 +334,35 @@ def val_and_grad(
     dJ_dS_DM2 = 4*xp.pi/M.wavelength * xp.imag(dJ_dE_DM2 * E_DM2P.conj() * DM2_PHASOR.conj())
     dJ_dS_DM1 = 4*xp.pi/M.wavelength * xp.imag(dJ_dE_DM1 * E_EP.conj() * DM1_PHASOR.conj())
     if M.flip_dm: 
-        dJ_dS_DM1_rot = xp.rot90(xp.rot90(dJ_dS_DM1))
-        dJ_dS_DM2_rot = xp.rot90(xp.rot90(dJ_dS_DM2))
-    if plot: imshows.imshow2(xp.real(dJ_dS_DM2_rot), xp.imag(dJ_dS_DM2_rot), 'RMAD DM2 Surface', npix=1.5*M.npix)
-    if plot: imshows.imshow2(xp.real(dJ_dS_DM1_rot), xp.imag(dJ_dS_DM1_rot), 'RMAD DM1 Surface', npix=1.5*M.npix)
+        dJ_dS_DM1 = xp.rot90(xp.rot90(dJ_dS_DM1))
+        dJ_dS_DM2 = xp.rot90(xp.rot90(dJ_dS_DM2))
+    if plot: imshows.imshow2(xp.real(dJ_dS_DM2), xp.imag(dJ_dS_DM2), 'RMAD DM2 Surface', npix=1.5*M.npix)
+    if plot: imshows.imshow2(xp.real(dJ_dS_DM1), xp.imag(dJ_dS_DM1), 'RMAD DM1 Surface', npix=1.5*M.npix)
 
     # Now pad back to the array size fo the DM surface to back propagate through the adjoint DM model
-    dJ_dS_DM2_rot2 = utils.pad_or_crop(dJ_dS_DM2_rot, M.Nsurf)
-    x2_bar = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM2_rot2)))
+    dJ_dS_DM2 = utils.pad_or_crop(dJ_dS_DM2, M.Nsurf)
+    x2_bar = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM2)))
     x1_bar = x2_bar * M.inf_fun_fft.conj()
     dJ_dA2 = M.Mx_back@x1_bar@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
     if plot: imshows.imshow2(dJ_dA2.real, dJ_dA2.imag, 'RMAD DM2 Actuators')
 
-    dJ_dS_DM1_rot2 = utils.pad_or_crop(dJ_dS_DM1_rot, M.Nsurf)
-    x2_bar2 = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM1_rot2)))
-    x1_bar2 = x2_bar2 * M.inf_fun_fft.conj()
-    dJ_dA1 = M.Mx_back@x1_bar2@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
+    dJ_dS_DM1 = utils.pad_or_crop(dJ_dS_DM1, M.Nsurf)
+    # x2_bar2 = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM1_rot2)))
+    x2_bar = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM1)))
+    # x1_bar2 = x2_bar2 * M.inf_fun_fft.conj()
+    x1_bar = x2_bar * M.inf_fun_fft.conj()
+    dJ_dA1 = M.Mx_back@x1_bar@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
     if plot: imshows.imshow2(dJ_dA1.real, dJ_dA1.imag, 'RMAD DM1 Actuators')
 
     dJ_dA = xp.concatenate([dJ_dA1[M.dm_mask].real, dJ_dA2[M.dm_mask].real]) + xp.array( r_cond * 2*del_acts_waves )
 
     if fancy_plot: 
-        imshows.fancy_plot_adjoint(dJ_dE_DMs, dJ_dE_LP2, dJ_dE_PUP, dJ_dS_DM1, dJ_dS_DM2, dJ_dA1, dJ_dA2, control_mask)
+        imshows.fancy_plot_adjoint(dJ_dE_DMs, dJ_dE_LP, dJ_dE_PUP, dJ_dS_DM1, dJ_dS_DM2, dJ_dA1, dJ_dA2, control_mask)
 
     current_dir = Path.cwd()
     test_dir = current_dir / 'adjoint_vars'
     test_dir.mkdir(exist_ok=True)
+    print("Creating CSV files!")
     matrices = {
         'E_FP_nom': E_FP_nom,
         'E_EP': E_EP,
@@ -362,12 +384,12 @@ def val_and_grad(
         'dJ_dE_DMs': dJ_dE_DMs,
         'dJ_dE_LS': dJ_dE_LS,
         'dJ_dE_LP': dJ_dE_LP,
-        'dJ_dE_LP2': dJ_dE_LP2,
+        # 'dJ_dE_LP2': dJ_dE_LP2,
         'dJ_dE_LP_fft': dJ_dE_LP_fft,
         'dJ_dE_FPM_fft': dJ_dE_FPM_fft,
         'dJ_dE_FP_fft': dJ_dE_FP_fft,
         'dJ_dE_PUP_fft': dJ_dE_PUP_fft,
-        'dJ_dE_PUP_fft2': dJ_dE_PUP_fft2,
+        # 'dJ_dE_PUP_fft2': dJ_dE_PUP_fft2,
         'dJ_dE_LP_mft': dJ_dE_LP_mft,
         'dJ_dE_FPM_mft': dJ_dE_FPM_mft,
         'dJ_dE_FP_mft': dJ_dE_FP_mft,
@@ -378,34 +400,40 @@ def val_and_grad(
         'dJ_dE_DM1': dJ_dE_DM1,
         'dJ_dS_DM2': dJ_dS_DM2,
         'dJ_dS_DM1': dJ_dS_DM1,
-        'dJ_dS_DM2_rot': dJ_dS_DM2_rot,
-        'dJ_dS_DM1_rot': dJ_dS_DM1_rot,
-        'dJ_dS_DM2_rot2': dJ_dS_DM2_rot2,
-        'dJ_dS_DM1_rot2': dJ_dS_DM1_rot2,
+        # 'dJ_dS_DM2_rot': dJ_dS_DM2_rot,
+        # 'dJ_dS_DM1_rot': dJ_dS_DM1_rot,
+        # 'dJ_dS_DM2_rot2': dJ_dS_DM2_rot2,
+        # 'dJ_dS_DM1_rot2': dJ_dS_DM1_rot2,
         'x2_bar': x2_bar,
         'x1_bar': x1_bar,
         'dJ_dA2': dJ_dA2,
-        'x2_bar2': x2_bar2,
-        'x1_bar2': x1_bar2,
+        # 'x2_bar2': x2_bar2,
+        # 'x1_bar2': x1_bar2,
         'dJ_dA1': dJ_dA1,
-        'dJ_dS_DM1_rot2': dJ_dS_DM1_rot2,
+        # 'dJ_dS_DM1_rot2': dJ_dS_DM1_rot2,
         'dJ_dA': dJ_dA
     }
 
-    N = 10  # adjust based on your needs
+    # N = 10  # adjust based on your needs
     for name, matrix in matrices.items():
-        np_matrix = np.array(matrix).flatten()[::N]
+        np_matrix = np.array(matrix).flatten()
         file_path = test_dir / f'{name}.csv'
         
-        # Handle complex and real data
-        if np.iscomplexobj(np_matrix):
-            data = {'real': np_matrix.flatten().real,
-                    'imag': np_matrix.flatten().imag}
+        if np_matrix.dtype == bool:
+            data = {'value': np_matrix}
+        # Handle complex data
+        elif np.iscomplexobj(np_matrix):
+            data = {
+                'real': np.round(np_matrix.real, 4),
+                'imag': np.round(np_matrix.imag, 4)
+            }
+        # Handle regular numeric data
         else:
-            data = {'real': np_matrix.flatten()}
-        
+            data = {'real': np.round(np_matrix, 4)}
+            
         df = pd.DataFrame(data)
         df.to_csv(file_path, index=False)
+        print(f"Saved {name}")
 
     return ensure_np_array(J), ensure_np_array(dJ_dA)
 

@@ -1,5 +1,5 @@
-from .math_module import xp, _scipy, ensure_np_array
-from . import utils
+from .math_module import xp, xcipy, ensure_np_array
+from adefc_vortex import utils
 
 import numpy as np
 import scipy
@@ -31,6 +31,7 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
                  inf_sampling,
                  Nact=34,
                  act_spacing=300e-6*u.m,
+                 shift=np.array([0, 0])*u.m,
                  max_stroke=1500e-9, 
                  Nbits=16, 
                  aperture=None,
@@ -46,6 +47,7 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
         self.Nact = Nact
         self.act_spacing = act_spacing
         self.include_reflection = include_reflection
+        self.shift = shift
 
         self.max_stroke = max_stroke
         self.Nbits = Nbits
@@ -80,15 +82,6 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
         self.My = xp.exp(-1j*2*np.pi*xp.outer(y,fy))
 
         self.pxscl_tol = 1e-6
-
-    def quantize_acts(self, acts):
-        quantized_acts = xp.zeros(self.Nacts)
-        for i in range(self.Nacts):
-            nearest_act_ind = xp.argmin(xp.abs(acts[i] - self.avail_act_vals))
-            nearest_act_val = self.avail_act_vals[nearest_act_ind]
-            # print(nearest_act_ind, nearest_act_val)
-            quantized_acts[i] = nearest_act_val 
-        return quantized_acts
 
     @property
     def command(self):
@@ -129,6 +122,8 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
         mft_command = self.Mx@self.command@self.My
         fourier_surf = self.inf_fun_fft * mft_command
         surf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(fourier_surf,))).real
+        shift_pix = self.shift.to_value(u.m)/self.pixelscale.to_value(u.m/u.pix)
+        surf = xcipy.ndimage.shift(surf, xp.flip(shift_pix), order=5)
         return surf
     
     # METHODS TO BE COMPATABLE WITH POPPY

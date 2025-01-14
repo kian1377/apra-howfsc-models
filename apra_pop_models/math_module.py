@@ -7,14 +7,8 @@ try:
     import cupyx.scipy
     cupy_avail = True
 except ImportError:
+    print('Cupy unavailable; computations will not be performed using GPU with CuPy.')
     cupy_avail = False
-    
-try:
-    import jax.numpy
-    import jax.scipy
-    jax_avail = True
-except ImportError:
-    jax_avail = False
 
 class np_backend:
     """A shim that allows a backend to be swapped at runtime."""
@@ -42,33 +36,22 @@ if poppy.accel_math._USE_CUPY:
     import cupy as cp
     import cupyx.scipy
     xp = np_backend(cp)
-    _scipy = scipy_backend(cupyx.scipy)
+    xcipy = scipy_backend(cupyx.scipy)
 else:
     xp = np_backend(np)
-    _scipy = scipy_backend(scipy)
+    xcipy = scipy_backend(scipy)
 
 def update_xp(module):
     xp._srcmodule = module
     
 def update_scipy(module):
-    _scipy._srcmodule = module
+    xcipy._srcmodule = module
     
 def ensure_np_array(arr):
     if isinstance(arr, np.ndarray):
         return arr
-    elif jax_avail and isinstance(arr, jax.numpy.ndarray):
-        return np.asarray(arr)
-    else:
+    elif cupy_avail and isinstance(arr, cupy.ndarray):
         return arr.get()
-        
-# def vectorize(arr, mask):
-    
-#     if isinstance(arr, np.ndarray):
-#         masked = arr[mask]
-#     elif use_cupy and isinstance(arr, cp.ndarray):
-#         masked = arr[mask]
-#     elif use_jax and isinstance(arr, jnp.ndarray):
-#         masked = arr.at[mask]
         
         
         

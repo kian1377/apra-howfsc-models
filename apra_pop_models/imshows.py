@@ -1,9 +1,10 @@
-from .math_module import xp, _scipy, ensure_np_array
-from .utils import pad_or_crop
+from .math_module import xp, xcipy, ensure_np_array
+from adefc_vortex import utils
 
 import numpy as np
 import scipy
 import astropy.units as u
+from IPython.display import display
 
 import matplotlib.pyplot as plt
 plt.rcParams['image.origin']='lower'
@@ -25,7 +26,7 @@ def imshow1(arr,
     fig,ax = plt.subplots(nrows=1, ncols=1, figsize=figsize, dpi=dpi)
     
     if npix is not None:
-        arr = pad_or_crop(arr, npix)
+        arr = utils.pad_or_crop(arr, npix)
 
     arr = ensure_np_array(arr)
     
@@ -77,8 +78,8 @@ def imshow2(arr1, arr2,
     fig,ax = plt.subplots(nrows=1, ncols=2, figsize=figsize, dpi=dpi)
     
     npix1, npix2 = (npix, npix) if npix is not None else (npix1, npix2)
-    if npix1 is not None: arr1 = pad_or_crop(arr1, npix1)
-    if npix2 is not None: arr2 = pad_or_crop(arr2, npix2)
+    if npix1 is not None: arr1 = utils.pad_or_crop(arr1, npix1)
+    if npix2 is not None: arr2 = utils.pad_or_crop(arr2, npix2)
 
     arr1 = ensure_np_array(arr1)
     arr2 = ensure_np_array(arr2)
@@ -172,9 +173,9 @@ def imshow3(arr1, arr2, arr3,
     fig,ax = plt.subplots(nrows=1, ncols=3, figsize=figsize, dpi=dpi)
     
     npix1, npix2, npix3 = (npix, npix, npix) if npix is not None else (npix1, npix2, npix3)
-    if npix1 is not None: arr1 = pad_or_crop(arr1, npix1)
-    if npix2 is not None: arr2 = pad_or_crop(arr2, npix2)
-    if npix3 is not None: arr3 = pad_or_crop(arr3, npix3)
+    if npix1 is not None: arr1 = utils.pad_or_crop(arr1, npix1)
+    if npix2 is not None: arr2 = utils.pad_or_crop(arr2, npix2)
+    if npix3 is not None: arr3 = utils.pad_or_crop(arr3, npix3)
 
     arr1 = ensure_np_array(arr1)
     arr2 = ensure_np_array(arr2)
@@ -282,156 +283,291 @@ def imshow3(arr1, arr2, arr3,
     if display_fig: display(fig)
     if return_fig: return fig,ax
     
+def plot_data(data, 
+              imvmin=1e-9, imvmax=1e-4, 
+              vmin=1e-9, vmax=1e-4, 
+              xticks=None,
+              fname=None,
+              ):
+    ims = ensure_np_array( xp.array(data['images']) ) 
+    control_mask = ensure_np_array( data['control_mask'] )
+    # print(type(control_mask))
+    Nitr = ims.shape[0]
+    npsf = ims.shape[1]
+    psf_pixelscale_lamD = data['pixelscale']
+
+    mean_nis = np.mean(ims[:,control_mask], axis=1)
+    ibest = np.argmin(mean_nis)
+    best_im = ensure_np_array(data['images'][ibest])
+
+    fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(12,6), dpi=125)
+    ext = psf_pixelscale_lamD*npsf/2
+    extent = [-ext, ext, -ext, ext]
+
+    im = ax[0].imshow( best_im, norm=LogNorm(vmax=imvmax, vmin=imvmin), cmap='magma', extent=extent)
+    ax[0].set_title(f'Best Iteration:\nMean Contrast = {mean_nis[ibest]:.2e}', fontsize=14)
+    divider = make_axes_locatable(ax[0])
+    cax = divider.append_axes("right", size="4%", pad=0.075)
+    cbar = fig.colorbar(im, cax=cax,)
+    cbar.ax.set_ylabel('NI', rotation=0, labelpad=7)
+    ax[0].set_position([0.05, 0, 0.45, 0.45])
+
+    ax[0].set_ylabel('Y [$\lambda/D$]', fontsize=12, labelpad=-5)
+    ax[0].set_xlabel('X [$\lambda/D$]', fontsize=12, labelpad=5)
+
+    ax[1].set_title('Mean Contrast per Iteration', fontsize=14)
+    ax[1].semilogy(mean_nis, label='3.6% Bandpass')
+    ax[1].grid()
+    ax[1].set_xlabel('Iteration Number', fontsize=12, )
+    ax[1].set_ylabel('Mean Contrast', fontsize=14, labelpad=1)
+    ax[1].set_ylim([vmin, vmax])
+    xticks = np.arange(0,Nitr,2) if xticks is None else xticks
+    ax[1].set_xticks(xticks)
+    ax[1].set_position([0.525, 0, 0.45, 0.45])
+
+    if fname is not None: fig.savefig(fname, format='pdf', bbox_inches="tight")
+
+def plot_data_with_ref(
+        data, 
+        im1vmin=1e-9, im1vmax=1e-4,
+        im2vmin=1e-9, im2vmax=1e-4, 
+        vmin=1e-9, vmax=1e-4, 
+        xticks=None,
+        fname=None,
+    ):
+    ims = ensure_np_array( xp.array(data['images']) ) 
+    control_mask = ensure_np_array( data['control_mask'] )
+    # print(type(control_mask))
+    Nitr = ims.shape[0]
+    npsf = ims.shape[1]
+    psf_pixelscale_lamD = data['pixelscale']
+
+    mean_nis = np.mean(ims[:,control_mask], axis=1)
+    ibest = np.argmin(mean_nis)
+    ref_im = ensure_np_array(data['images'][0])
+    best_im = ensure_np_array(data['images'][ibest])
+
+    fig,ax = plt.subplots(nrows=1, ncols=3, figsize=(15,10), dpi=125, gridspec_kw={'width_ratios': [1, 1, 1], })
+    ext = psf_pixelscale_lamD*npsf/2
+    extent = [-ext, ext, -ext, ext]
+
+    w = 0.225
+    im1 = ax[0].imshow(ref_im, norm=LogNorm(vmax=im1vmax, vmin=im1vmin), cmap='magma', extent=extent)
+    ax[0].set_title(f'Reference Image:\nMean Contrast = {mean_nis[0]:.2e}', fontsize=14)
+    divider = make_axes_locatable(ax[0])
+    cax = divider.append_axes("right", size="4%", pad=0.075)
+    cbar = fig.colorbar(im1, cax=cax)
+    cbar.ax.set_ylabel('NI', rotation=0, labelpad=7)
+    ax[0].set_position([0, 0, w, w]) # [left, bottom, width, height]
+
+    im2 = ax[1].imshow( best_im, norm=LogNorm(vmax=im2vmax, vmin=im2vmin), cmap='magma', extent=extent)
+    ax[1].set_title(f'Best Iteration:\nMean Contrast = {mean_nis[ibest]:.2e}', fontsize=14)
+    divider = make_axes_locatable(ax[1])
+    cax = divider.append_axes("right", size="4%", pad=0.075)
+    cbar = fig.colorbar(im2, cax=cax,)
+    cbar.ax.set_ylabel('NI', rotation=0, labelpad=7)
+    ax[1].set_position([0.23, 0, w, w])
+
+    ax[0].set_ylabel('Y [$\lambda/D$]', fontsize=12, labelpad=-5)
+    ax[0].set_xlabel('X [$\lambda/D$]', fontsize=12, labelpad=5)
+    ax[1].set_xlabel('X [$\lambda/D$]', fontsize=12, labelpad=5)
+
+    ax[2].set_title('Mean Contrast per Iteration', fontsize=14)
+    ax[2].semilogy(mean_nis, label='3.6% Bandpass')
+    ax[2].grid()
+    ax[2].set_xlabel('Iteration Number', fontsize=12, )
+    ax[2].set_ylabel('Mean Contrast', fontsize=14, labelpad=1)
+    ax[2].set_ylim([vmin, vmax])
+    xticks = np.arange(0,Nitr,2) if xticks is None else xticks
+    ax[2].set_xticks(xticks)
+    ax[2].set_position([0.525, 0, 0.3, w])
+
+    if fname is not None: fig.savefig(fname, format='pdf', bbox_inches="tight")
+
+
+def plot_both_data(efc_data, aefc_data,  
+                    im1vmin=1e-9, im1vmax=1e-4, 
+                    im2vmin=1e-9, im2vmax=1e-4, 
+                    vmin=1e-9, vmax=1e-4, 
+                    xticks=None,
+                    fname=None,
+                    ):
+    efc_ims = ensure_np_array( xp.array(efc_data['images']) ) 
+    aefc_ims = ensure_np_array( xp.array(aefc_data['images']) ) 
+
+    # print(type(control_mask))
+    Nitr_efc = efc_ims.shape[0]
+    Nitr_aefc = efc_ims.shape[0]
+
+    control_mask = ensure_np_array( efc_data['control_mask'] )
+    npsf = efc_ims.shape[1]
+    psf_pixelscale_lamD = efc_data['pixelscale']
+
+    mean_nis_efc = np.mean(efc_ims[:,control_mask], axis=1)
+    ibest_efc = np.argmin(mean_nis_efc)
+    best_efc_im = ensure_np_array(efc_data['images'][ibest_efc])
+    mean_nis_aefc = np.mean(aefc_ims[:,control_mask], axis=1)
+    ibest_aefc = np.argmin(mean_nis_aefc)
+    best_aefc_im = ensure_np_array(aefc_data['images'][ibest_aefc])
+
+    fig,ax = plt.subplots(nrows=1, ncols=3, figsize=(16,9), dpi=125, gridspec_kw={'width_ratios': [1, 1, 1], })
+    ext = psf_pixelscale_lamD*npsf/2
+    extent = [-ext, ext, -ext, ext]
+
+    im1 = ax[0].imshow(best_efc_im, norm=LogNorm(vmax=im1vmax, vmin=im1vmin), cmap='magma', extent=extent)
+    ax[0].set_title(f'Best EFC Iteration:\nMean Contrast = {mean_nis_efc[ibest_efc]:.2e}', fontsize=14)
+    divider = make_axes_locatable(ax[0])
+    cax = divider.append_axes("right", size="4%", pad=0.075)
+    cbar = fig.colorbar(im1, cax=cax)
+    cbar.ax.set_ylabel('NI', rotation=0, labelpad=7)
+    ax[0].set_position([0, 0.3, 0.25, 0.25]) # [left, bottom, width, height]
+
+    im2 = ax[1].imshow( best_aefc_im, norm=LogNorm(vmax=im2vmax, vmin=im2vmin), cmap='magma', extent=extent)
+    ax[1].set_title(f'Best aEFC Iteration:\nMean Contrast = {mean_nis_aefc[ibest_aefc]:.2e}', fontsize=14)
+    divider = make_axes_locatable(ax[1])
+    cax = divider.append_axes("right", size="4%", pad=0.075)
+    cbar = fig.colorbar(im2, cax=cax,)
+    cbar.ax.set_ylabel('NI', rotation=0, labelpad=7)
+    ax[1].set_position([0.225, 0.3, 0.25, 0.25])
+
+    ax[0].set_ylabel('Y [$\lambda/D$]', fontsize=12, labelpad=-5)
+    ax[0].set_xlabel('X [$\lambda/D$]', fontsize=12, labelpad=5)
+    ax[1].set_xlabel('X [$\lambda/D$]', fontsize=12, labelpad=5)
+
+    ax[2].set_title('Mean Contrast per Iteration', fontsize=14)
+    ax[2].semilogy(mean_nis_aefc, label='aEFC')
+    ax[2].semilogy(mean_nis_efc, label='EFC')
+    ax[2].grid()
+    ax[2].set_xlabel('Iteration Number', fontsize=12, )
+    ax[2].set_ylabel('Mean Contrast', fontsize=14, labelpad=1)
+    ax[2].set_ylim([vmin, vmax])
+    xticks = np.arange(0, Nitr_efc,2) if xticks is None else xticks
+    ax[2].set_xticks(xticks)
+    ax[2].legend(loc='upper right', fontsize=14)
+    ax[2].set_position([0.525, 0.3, 0.25, 0.25])
+
+    if fname is not None: fig.savefig(fname, format='pdf', bbox_inches="tight")
+
+def plot_both_with_reg_conds(
+        efc_data, aefc_data,  
+        im1vmin=1e-9, im1vmax=1e-4, 
+        im2vmin=1e-9, im2vmax=1e-4, 
+        vmin=1e-9, vmax=1e-4, 
+        xticks=None,
+        fname=None,
+        ):
+    efc_ims = ensure_np_array( xp.array(efc_data['images']) ) 
+    aefc_ims = ensure_np_array( xp.array(aefc_data['images']) ) 
+
+    # print(type(control_mask))
+    Nitr_efc = efc_ims.shape[0]
+    Nitr_aefc = efc_ims.shape[0]
+
+    control_mask = ensure_np_array( efc_data['control_mask'] )
+    npsf = efc_ims.shape[1]
+    psf_pixelscale_lamD = efc_data['pixelscale']
+
+    mean_nis_efc = np.mean(efc_ims[:,control_mask], axis=1)
+    ibest_efc = np.argmin(mean_nis_efc)
+    best_efc_im = ensure_np_array(efc_data['images'][ibest_efc])
+    mean_nis_aefc = np.mean(aefc_ims[:,control_mask], axis=1)
+    ibest_aefc = np.argmin(mean_nis_aefc)
+    best_aefc_im = ensure_np_array(aefc_data['images'][ibest_aefc])
+
+    aefc_reg_conds = aefc_data['reg_conds']
+    efc_reg_conds = efc_data['reg_conds']
+
+    fig,ax = plt.subplots(nrows=2, ncols=2, figsize=(12,9), dpi=125,)
+    ext = psf_pixelscale_lamD*npsf/2
+    extent = [-ext, ext, -ext, ext]
+
+    im1 = ax[0,0].imshow(best_efc_im, norm=LogNorm(vmax=im1vmax, vmin=im1vmin), cmap='magma', extent=extent)
+    ax[0,0].set_title(f'Best EFC Iteration:\nMean Contrast = {mean_nis_efc[ibest_efc]:.2e}', fontsize=14)
+    divider = make_axes_locatable(ax[0,0])
+    cax = divider.append_axes("right", size="4%", pad=0.075)
+    cbar = fig.colorbar(im1, cax=cax)
+    cbar.ax.set_ylabel('NI', rotation=0, labelpad=7)
+    # ax[0,0].set_position([0, 0.3, 0.25, 0.25]) # [left, bottom, width, height]
+
+    im2 = ax[1,0].imshow( best_aefc_im, norm=LogNorm(vmax=im2vmax, vmin=im2vmin), cmap='magma', extent=extent)
+    ax[1,0].set_title(f'Best aEFC Iteration:\nMean Contrast = {mean_nis_aefc[ibest_aefc]:.2e}', fontsize=14)
+    divider = make_axes_locatable(ax[1,0])
+    cax = divider.append_axes("right", size="4%", pad=0.075)
+    cbar = fig.colorbar(im2, cax=cax,)
+    cbar.ax.set_ylabel('NI', rotation=0, labelpad=7)
+    # ax[1,0].set_position([0.225, 0.3, 0.25, 0.25])
+
+    ax[0,0].set_ylabel('Y [$\lambda/D$]', fontsize=12, labelpad=0)
+    ax[1,0].set_ylabel('Y [$\lambda/D$]', fontsize=12, labelpad=0)
+    ax[1,0].set_xlabel('X [$\lambda/D$]', fontsize=12, labelpad=5)
+
+    xticks = np.arange(0, Nitr_efc,2) if xticks is None else xticks
+
+    ax[0,1].semilogy(mean_nis_aefc, label='aEFC')
+    ax[0,1].semilogy(mean_nis_efc, label='EFC')
+    ax[0,1].set_title('Mean Contrast per Iteration', fontsize=14)
+    ax[0,1].grid()
+    ax[0,1].set_xlabel('Iteration Number', fontsize=12, )
+    ax[0,1].set_ylabel('Mean Contrast', fontsize=14, labelpad=1)
+    ax[0,1].set_ylim([vmin, vmax])
+    ax[0,1].set_xticks(xticks)
+    ax[0,1].legend(loc='upper right', fontsize=14)
+    # ax[2].set_position([0.525, 0.3, 0.25, 0.25])
+
+    ax1 = ax[1,1]
+    ax1.semilogy(np.linspace(1, Nitr_aefc-1, Nitr_aefc-1), aefc_reg_conds, '-o', label='aEFC', )
+    ax1.set_ylabel('aEFC regularization values', fontsize=14, labelpad=5,)
+    ax1.tick_params(axis='y', labelcolor='#1f77b4')
+    ax2 = ax1.twinx()
+    ax2.plot(np.linspace(1, Nitr_efc-1, Nitr_efc-1), efc_reg_conds, '-o', color='#ff7f0e',)
+    ax2.set_ylabel('EFC $\\beta$  values', fontsize=14, rotation=-90, labelpad = 25)
+    ax2.tick_params(axis='y', labelcolor='#ff7f0e')
+    ax2.set_ylim([-3.5, -0.5])
+    ax2.set_xticks(xticks)
+    ax[1,1].grid(axis='x')
+    # ax[1,1].legend()
+
+    ax1.set_xlabel('Iteration Number', fontsize=12, )
+
+    plt.subplots_adjust(wspace=0.25, hspace=0.3)
+
+    if fname is not None: fig.savefig(fname, format='pdf', bbox_inches="tight")
+
+def get_radial_dist(shape, scaleyx=(1.0, 1.0), cenyx=None):
+    '''
+    Compute the radial separation of each pixel
+    from the center of a 2D array, and optionally 
+    scale in x and y.
+    '''
+    indices = np.indices(shape)
+    if cenyx is None:
+        cenyx = ( (shape[0] - 1) / 2., (shape[1] - 1)  / 2.)
+    radial = np.sqrt( (scaleyx[0]*(indices[0] - cenyx[0]))**2 + (scaleyx[1]*(indices[1] - cenyx[1]))**2 )
+    return radial
+
+def get_radial_contrast(im, mask, nbins=50, cenyx=None):
+    im = ensure_np_array(im)
+    mask = ensure_np_array(mask)
+    radial = get_radial_dist(im.shape, cenyx=cenyx)
+    bins = np.linspace(0, radial.max(), num=nbins, endpoint=True)
+    digrad = np.digitize(radial, bins)
+    profile = np.asarray([np.mean(im[ (digrad == i) & mask]) for i in np.unique(digrad)])
+    return bins, profile
     
-def fancy_plot_forward(dm1_command, dm2_command, DM1_PHASOR, DM2_PHASOR, E_PUP, E_LP, E_FP, npix, wavelength):
-    DM1_SURF = ensure_np_array(wavelength/(4*xp.pi) * pad_or_crop(xp.angle(DM1_PHASOR), 1.5*npix) )
-    DM2_SURF = ensure_np_array(wavelength/(4*xp.pi) * pad_or_crop(xp.angle(DM2_PHASOR), 1.5*npix) )
-    E_PUP = ensure_np_array(pad_or_crop(E_PUP, 1.5*npix))
-    E_LP = ensure_np_array(pad_or_crop(E_LP, 1.5*npix))
-    E_FP = ensure_np_array(E_FP)
+def plot_radial_contrast(im, mask, pixelscale, nbins=30, cenyx=None, xlims=None, ylims=None):
+    bins, contrast = get_radial_contrast(im, mask, nbins=nbins, cenyx=cenyx)
+    r = bins * pixelscale
 
-    fig = plt.figure(figsize=(20,10), dpi=125)
-    gs = GridSpec(2, 6, figure=fig)
+    fig,ax = plt.subplots(nrows=1, ncols=1, dpi=125, figsize=(6,4))
+    ax.semilogy(r,contrast)
+    ax.set_xlabel('radial position [$\lambda/D$]')
+    ax.set_ylabel('Contrast')
+    ax.grid()
+    if xlims is not None: ax.set_xlim(xlims[0], xlims[1])
+    if ylims is not None: ax.set_ylim(ylims[0], ylims[1])
+    plt.close()
+    display(fig)
 
-    title_fz = 16
 
-    ax = fig.add_subplot(gs[0, 0])
-    ax.imshow(ensure_np_array(dm1_command), cmap='viridis')
-    ax.set_title('DM1 Command', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
 
-    ax = fig.add_subplot(gs[1, 0])
-    ax.imshow(ensure_np_array(dm2_command), cmap='viridis')
-    ax.set_title('DM2 Command', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[0, 1])
-    ax.imshow(DM1_SURF, cmap='viridis',)
-    ax.set_title('DM1 Surface', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[1, 1])
-    ax.imshow(DM2_SURF, cmap='viridis',)
-    ax.set_title('DM2 Surface', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[0, 2])
-    ax.imshow(np.abs(E_PUP), cmap='plasma')
-    ax.set_title('Total Pupil Amplitude', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[1, 2])
-    ax.imshow(np.angle(E_PUP), cmap='twilight')
-    ax.set_title('Total Pupil Phase', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[0, 3])
-    ax.imshow(np.abs(E_LP), cmap='plasma')
-    ax.set_title('Lyot Pupil Amplitude', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[1, 3])
-    ax.imshow(np.angle(E_LP), cmap='twilight')
-    ax.set_title('Lyot Pupil Phase', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[0, 4])
-    ax.imshow(np.abs(E_FP)**2, cmap='magma', norm=LogNorm(vmin=1e-8))
-    ax.set_title('Focal Plane Intensity', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[1, 4])
-    ax.imshow(np.angle(E_FP), cmap='twilight')
-    ax.set_title('Focal Plane Phase', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    plt.subplots_adjust(hspace=-0.3)
-
-def fancy_plot_adjoint(dJ_dE_DMs, dJ_dE_LP, dJ_dE_PUP, dJ_dS_DM1, dJ_dS_DM2, dJ_dA1, dJ_dA2, control_mask, npix=1000):
-
-    control_mask = ensure_np_array(control_mask)
-    dJ_dE_DMs = ensure_np_array(dJ_dE_DMs)
-    dJ_dE_LP = ensure_np_array(pad_or_crop(dJ_dE_LP, 1.5*npix))
-    dJ_dE_PUP = ensure_np_array(pad_or_crop(dJ_dE_PUP, 1.5*npix))
-    dJ_dS_DM1 = ensure_np_array(pad_or_crop(dJ_dS_DM1, int(1.5*npix))).real
-    dJ_dS_DM2 = ensure_np_array(pad_or_crop(dJ_dS_DM2, int(1.5*npix))).real
-    dJ_dA1 = ensure_np_array(dJ_dA1).real
-    dJ_dA2 = ensure_np_array(dJ_dA2).real
-
-    fig = plt.figure(figsize=(20,10), dpi=125)
-    gs = GridSpec(2, 5, figure=fig)
-
-    title_fz = 26
-
-    ax = fig.add_subplot(gs[0, 0])
-    ax.imshow(control_mask * np.abs(dJ_dE_DMs)**2, cmap='magma', norm=LogNorm(vmin=1e-5))
-    ax.set_title(r'$| \frac{\partial J}{\partial E_{DM}} |^2$', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[1, 0])
-    ax.imshow(control_mask * np.angle(dJ_dE_DMs), cmap='twilight',)
-    ax.set_title(r'$\angle \frac{\partial J}{\partial E_{DM}} $', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[0, 1])
-    ax.imshow(np.abs(dJ_dE_LP), cmap='plasma')
-    ax.set_title(r'$| \frac{\partial J}{\partial E_{LP}} |$', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[1, 1])
-    ax.imshow(np.angle(dJ_dE_LP), cmap='twilight')
-    ax.set_title(r'$\angle \frac{\partial J}{\partial E_{LP}} $', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[0, 2])
-    ax.imshow(np.abs(dJ_dE_PUP), cmap='plasma')
-    ax.set_title(r'$| \frac{\partial J}{\partial E_{PUP}} |$', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[1, 2])
-    ax.imshow(np.angle(dJ_dE_PUP), cmap='twilight')
-    ax.set_title(r'$\angle \frac{\partial J}{\partial E_{PUP}} $', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[0, 3])
-    ax.imshow(dJ_dS_DM1, cmap='viridis')
-    ax.set_title(r'$ \frac{\partial J}{\partial S_{DM1}} $', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[1, 3])
-    ax.imshow(dJ_dS_DM2, cmap='viridis')
-    ax.set_title(r'$ \frac{\partial J}{\partial S_{DM2}} $', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[0, 4])
-    ax.imshow(dJ_dA1, cmap='viridis')
-    ax.set_title(r'$ \frac{\partial J}{\partial A_1} $', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    ax = fig.add_subplot(gs[1, 4])
-    ax.imshow(dJ_dA2, cmap='viridis')
-    ax.set_title(r'$ \frac{\partial J}{\partial A_2} $', fontsize=title_fz)
-    ax.set_xticks([])
-    ax.set_yticks([])
-
-    plt.subplots_adjust(hspace=-0.2)
 

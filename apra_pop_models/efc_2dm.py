@@ -1,132 +1,177 @@
-from .math_module import xp, _scipy, ensure_np_array
-from . import imshows
-from . import utils
+from .math_module import xp, xcipy, ensure_np_array
+from adefc_vortex import utils
+from adefc_vortex.imshows import imshow1, imshow2, imshow3
+import adefc_vortex.pwp as pwp
 
 import numpy as np
-import astropy.units as u
+from scipy.optimize import minimize
 import time
 import copy
-from IPython.display import display, clear_output
 
-from pathlib import Path
+def compute_jacobian(M, control_mask, amp=1e-9, current_acts=None, wavelength=None):
+    if current_acts is None:
+        current_acts = xp.zeros(M.Nacts)
+    if wavelength is None:
+        wavelength = M.wavelength_c
 
-def compute_jacobian(M, 
-                   calib_amp, calib_modes, 
-                   control_mask, 
-                   plot_responses=False,
-                  ):
-    start = time.time()
-    
-    Nmodes = calib_modes.shape[0]
     Nmask = int(control_mask.sum())
-
-    response_matrix = xp.zeros((2*Nmask, Nmodes), dtype=xp.float64)
-    print('Calculating Jacobian: ')
-    for i, calibration_mode in enumerate(calib_modes):
-        # reshape calibration mode into the DM1 and DM2 components
-        dm1_mode = calibration_mode[:M.Nact**2].reshape(M.Nact, M.Nact)
-        dm2_mode = calibration_mode[M.Nact**2:].reshape(M.Nact, M.Nact)
-        
-        # Add the mode to the DMs
-        M.add_dm1(calib_amp * dm1_mode)
-        M.add_dm2(calib_amp * dm2_mode)
-        E_pos = M.calc_wf()
-        M.add_dm1(-2 * calib_amp * dm1_mode) # remove the mode
-        M.add_dm2(-2 * calib_amp * dm2_mode)
-        E_neg = M.calc_wf()
-        M.add_dm1(calib_amp * dm1_mode)
-        M.add_dm2(calib_amp * dm2_mode)
-
-        response = ( E_pos - E_neg ) / (2*calib_amp)
-
-        response_matrix[::2,i] = response[control_mask].real
-        response_matrix[1::2,i] = response[control_mask].imag
-
-        print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(i+1, Nmodes, time.time()-start), end='')
+    jac = xp.zeros((2*Nmask, M.Nacts))
+    print(jac.shape)
+    start = time.time()
+    for i in range(M.Nacts):
+        del_acts = xp.zeros(M.Nacts)
+        del_acts[i] = amp
+        E_pos = M.forward(current_acts + del_acts, wavelength, use_vortex=1, )
+        E_neg = M.forward(current_acts - del_acts, wavelength, use_vortex=1, )
+        response = ( E_pos - E_neg ) / (2*amp)
+        jac[::2, i] = response.real[control_mask]
+        jac[1::2, i] = response.imag[control_mask]
+        print(f"\tCalibrated mode {i+1:d}/{M.Nacts:d} in {time.time()-start:.3f}s", end='')
         print("\r", end="")
-    
-    print()
-    print('Jacobian built in {:.3f} sec'.format(time.time()-start))
-    
-    if plot_responses:
-        responses = response_matrix[::2] + 1j*response_matrix[1::2]
-        dm_rms = xp.sqrt( xp.mean( xp.square(xp.abs(responses.dot(xp.array(calib_modes)))), axis=0) ) 
-        dm1_rms = dm_rms[:M.Nact**2].reshape(M.Nact, M.Nact)
-        dm2_rms = dm_rms[M.Nact**2:].reshape(M.Nact, M.Nact)
-        imshows.imshow2(dm1_rms, dm2_rms, 
-                        'DM1 RMS Actuator Responses', 'DM2 RMS Actuator Responses')
 
-    return response_matrix
+    return jac
+
+def compute_jacobian_bb(M, control_mask, waves, amp=1e-9, current_acts=None,):
+
+    Nwaves = waves.shape[0]
+    Nmask = int(control_mask.sum())
+    jac = xp.zeros((Nwaves * 2*Nmask, M.Nacts))
+    print(jac.shape)
+    for i in range(Nwaves):
+        mono_jac = compute_jacobian(M, control_mask, amp, current_acts, waves[i])
+        jac[i*2*Nmask:(i+1)*2*Nmask] = mono_jac
+
+    return jac
 
 def run(I, 
-        response_matrix,
-        reg_fun, reg_cond,
-        control_mask, 
-        est_fun=None, 
-        est_params=None, 
+        control_matrix,
+        control_mask,
+        data,
+        pwp_params=None,
+        Nitr=3, 
         gain=0.5, 
-        iterations=3, 
-        plot_all=False, 
-        plot=True,
-        all_ims=[], 
-        all_efs=[],
-        all_commands=[],
         ):
     
-    print('Beginning closed-loop EFC simulation.')    
-
-    Nmask = int(control_mask.sum())
-    control_matrix = reg_fun(response_matrix, reg_cond)
-    
-    starting_itr = len(all_ims)
-    if len(all_commands)>0:
-        total_dm1 = copy.copy(all_commands[-1][0])
-        total_dm2 = copy.copy(all_commands[-1][1])
+    starting_itr = len(data['images'])
+    if len(data['dm1_commands'])>0:
+        total_dm1 = copy.copy(data['dm1_commands'][-1])
+        total_dm2 = copy.copy(data['dm2_commands'][-1])
     else:
-        total_dm1 = xp.zeros((I.Nact,I.Nact))
-        total_dm2 = xp.zeros((I.Nact,I.Nact))
+        total_dm1, total_dm2 = ( xp.zeros((I.Nact,I.Nact)), xp.zeros((I.Nact,I.Nact)) ) 
 
     del_dm1 = xp.zeros((I.Nact,I.Nact))
     del_dm2 = xp.zeros((I.Nact,I.Nact))
-    for i in range(iterations):
-        print(f'\tRunning iteration {i+1+starting_itr}/{iterations+starting_itr}.')
+    Nacts = control_matrix.shape[0]
+    Nmask = int(control_mask.sum())
+    E_ab_vec = xp.zeros(2*Nmask)
+    for i in range(Nitr):
         
-        if est_fun is None:
-            E_ab = I.calc_wf() # no PWP, just use model
+        if pwp_params is not None: 
+            print('Running PWP ...')
+            E_ab = pwp.run(I, **pwp_params)
         else:
-            E_ab = est_fun(I, **est_params)
-        # efields.append([copy.copy(electric_field)])
-        efield_ri = xp.zeros(2*Nmask)
-        efield_ri[::2] = E_ab[control_mask].real
-        efield_ri[1::2] = E_ab[control_mask].imag
+            print('Computing E-field with model ...')
+            E_ab = I.calc_wf()
 
-        del_acts = gain * control_matrix.dot(efield_ri)
-        del_dm1[I.dm_mask] = del_acts[:I.Nacts]
-        del_dm2[I.dm_mask] = del_acts[I.Nacts:]
+        E_ab_vec[::2] = E_ab[control_mask].real
+        E_ab_vec[1::2] = E_ab[control_mask].imag
+        del_acts = - gain * control_matrix.dot(E_ab_vec)
+        del_dm1[I.dm_mask] = del_acts[:Nacts//2]
+        del_dm2[I.dm_mask] = del_acts[Nacts//2:]
         total_dm1 += del_dm1
         total_dm2 += del_dm2
 
         I.add_dm1(del_dm1)
         I.add_dm2(del_dm2)
-        
         image_ni = I.snap()
-
-        all_ims.append(copy.copy(image_ni))
-        all_efs.append(copy.copy(E_ab))
-        all_commands.append(xp.array([total_dm1, total_dm2]))
-        
         mean_ni = xp.mean(image_ni[control_mask])
-        print(f'\tMean NI of this iteration: {mean_ni:.3e}')
 
-        if plot or plot_all:
+        data['images'].append(copy.copy(image_ni))
+        data['efields'].append(copy.copy(E_ab))
+        data['dm1_commands'].append(copy.copy(total_dm1))
+        data['del_dm1_commands'].append(copy.copy(del_dm1))
+        data['dm2_commands'].append(copy.copy(total_dm2))
+        data['del_dm2_commands'].append(copy.copy(del_dm2))
+        print(i)
+        imshow3(del_dm1, del_dm2, image_ni, 
+                f'$\delta$DM1', f'$\delta$DM2', 
+                f'Iteration {starting_itr + i:d} Image\nMean NI = {mean_ni:.3e}',
+                cmap1='viridis', cmap2='viridis', 
+                pxscl3=I.psf_pixelscale_lamDc, lognorm3=True, vmin3=1e-10)
 
-            imshows.imshow3(all_commands[-1][0], all_commands[-1][1], all_ims[-1], 
-                            'DM1', 'DM2', f'Image: Iteration {i+starting_itr+1}\nMean NI: {mean_ni:.3e}',
-                            cmap1='viridis', cmap2='viridis',
-                            lognorm3=True, vmin3=1e-10, pxscl3=I.psf_pixelscale_lamD, xlabel3='$\lambda/D$')
-            if not plot_all: clear_output(wait=True)
+    return data
 
-    return all_ims, all_efs, all_commands
+def calc_wfs(I, waves, control_mask, plot=False):
+    Nwaves = len(waves)
+    E_abs = xp.zeros((Nwaves, I.npsf, I.npsf), dtype=xp.complex128)
+    for i in range(Nwaves):
+        I.wavelength = waves[i]
+        E_abs[i] = I.calc_wf() * control_mask
+        if plot: imshow2(xp.abs(E_abs[i])**2, xp.angle(E_abs[i])*control_mask, lognorm1=True, cmap2='twilight')
 
+    return E_abs
 
+def run_bb(
+        I, 
+        control_matrix,
+        reg_cond,
+        control_mask,
+        control_waves,
+        data,
+        pwp_params=None,
+        Nitr=3, 
+        gain=0.5, 
+        ):
+    
+    starting_itr = len(data['images'])
+    if len(data['dm1_commands'])>0:
+        total_dm1 = copy.copy(data['dm1_commands'][-1])
+        total_dm2 = copy.copy(data['dm2_commands'][-1])
+    else:
+        total_dm1, total_dm2 = ( xp.zeros((I.Nact,I.Nact)), xp.zeros((I.Nact,I.Nact)) ) 
+
+    del_dm1 = xp.zeros((I.Nact,I.Nact))
+    del_dm2 = xp.zeros((I.Nact,I.Nact))
+    Nacts = control_matrix.shape[0]
+    Nmask = int(control_mask.sum())
+    Nwaves = control_waves.shape[0]
+    E_ab_vec = xp.zeros(Nwaves * 2*Nmask)
+    for i in range(Nitr):
+        if pwp_params is not None: 
+            print('Running PWP ...')
+            E_abs = pwp.run_bb(I, M, **pwp_params)
+        else:
+            print('Computing E-field with model ...')
+            E_abs = calc_wfs(I, control_waves, control_mask)
+
+        for j in range(Nwaves):
+            E_ab_vec[j*2*Nmask:(j+1)*2*Nmask][::2] = E_abs[j][control_mask].real
+            E_ab_vec[j*2*Nmask:(j+1)*2*Nmask][1::2] = E_abs[j][control_mask].imag
+
+        del_acts = - gain * control_matrix.dot(E_ab_vec)
+        del_dm1[I.dm_mask] = del_acts[:Nacts//2]
+        del_dm2[I.dm_mask] = del_acts[Nacts//2:]
+        total_dm1 += del_dm1
+        total_dm2 += del_dm2
+
+        I.add_dm1(del_dm1)
+        I.add_dm2(del_dm2)
+        image_ni = I.snap()
+        mean_ni = xp.mean(image_ni[control_mask])
+
+        data['images'].append(copy.copy(image_ni))
+        data['efields'].append(copy.copy(E_abs))
+        data['dm1_commands'].append(copy.copy(total_dm1))
+        data['del_dm1_commands'].append(copy.copy(del_dm1))
+        data['dm2_commands'].append(copy.copy(total_dm2))
+        data['del_dm2_commands'].append(copy.copy(del_dm2))
+        data['reg_conds'].append(copy.copy(reg_cond))
+        print(i)
+        imshow3(del_dm1, del_dm2, image_ni, 
+                f'$\delta$DM1', f'$\delta$DM2', 
+                f'Iteration {starting_itr + i:d} Image\nMean NI = {mean_ni:.3e}',
+                cmap1='viridis', cmap2='viridis', 
+                pxscl3=I.psf_pixelscale_lamDc, lognorm3=True, vmin3=1e-10)
+
+    return data
 

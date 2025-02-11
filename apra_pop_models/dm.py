@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from adefc_vortex import utils
+from apra_pop_models import utils
 
 import numpy as np
 import scipy
@@ -26,17 +26,16 @@ def make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=10, coupling=0.15, Na
 
 class DeformableMirror(poppy.AnalyticOpticalElement):
     
-    def __init__(
-            self,
-            inf_fun,
-            inf_sampling,
-            Nact=96,
-            act_spacing=500e-6*u.m,
-            aperture=None,
-            include_reflection=True,
-            planetype=poppy.poppy_core.PlaneType.intermediate,
-            name='DM',
-        ):
+    def __init__(self,
+                 inf_fun,
+                 inf_sampling,
+                 Nact=34,
+                 act_spacing=300e-6*u.m,
+                 aperture=None,
+                 include_reflection=True,
+                 planetype=poppy.poppy_core.PlaneType.intermediate,
+                 name='DM',
+                ):
         
         self.inf_fun = inf_fun
         self.inf_sampling = inf_sampling
@@ -44,10 +43,6 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
         self.Nact = Nact
         self.act_spacing = act_spacing
         self.include_reflection = include_reflection
-
-        self.avail_act_vals = xp.linspace(-self.max_stroke/2, self.max_stroke/2, self.Nvals, dtype=xp.float64)
-        self.act_res = self.avail_act_vals[1] - self.avail_act_vals[0]
-        self.use_act_res = False
 
         self.Nsurf = inf_fun.shape[0]
         self.pixelscale = self.act_spacing/(self.inf_sampling*u.pix)
@@ -83,11 +78,6 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
     @command.setter
     def command(self, command_values):
         command_values *= self.dm_mask
-        if self.use_act_res: 
-            acts = command_values[self.dm_mask]
-            quantized_acts = self.quantize_acts(acts)
-            command_values = xp.zeros_like(command_values)
-            command_values[self.dm_mask] = quantized_acts
         self._actuators = self.map_command_to_actuators(command_values) # ensure you update the actuators if command is set
         self._command = command_values
     
@@ -97,8 +87,6 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
 
     @actuators.setter
     def actuators(self, act_vector):
-        if self.use_act_res: 
-            act_vector = self.quantize_acts(act_vector)
         self._command = self.map_actuators_to_command(act_vector) # ensure you update the actuators if command is set
         self._actuators = act_vector
     
@@ -115,8 +103,6 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
         mft_command = self.Mx@self.command@self.My
         fourier_surf = self.inf_fun_fft * mft_command
         surf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(fourier_surf,))).real
-        shift_pix = self.shift.to_value(u.m)/self.pixelscale.to_value(u.m/u.pix)
-        surf = xcipy.ndimage.shift(surf, xp.flip(shift_pix), order=5)
         return surf
     
     # METHODS TO BE COMPATABLE WITH POPPY
@@ -151,6 +137,7 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
         dm_phasor = self.get_transmission(wave) * xp.exp(1j * 2*np.pi/wave.wavelength.to_value(u.m) * self.get_opd(wave))
 
         return dm_phasor
+
 
 
 

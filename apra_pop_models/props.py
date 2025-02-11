@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from adefc_vortex import utils
+from apra_pop_models import utils
 
 import numpy as np
 import astropy.units as u

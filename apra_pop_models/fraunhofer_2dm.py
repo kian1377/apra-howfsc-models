@@ -1,8 +1,8 @@
 from .math_module import xp, xcipy, ensure_np_array
-from adefc_vortex import utils
-from adefc_vortex.imshows import imshow1, imshow2, imshow3
-from adefc_vortex import dm
-from adefc_vortex import props
+from apra_pop_models import utils
+from apra_pop_models.imshows import imshow1, imshow2, imshow3
+from apra_pop_models import dm
+from apra_pop_models import props
 
 import numpy as np
 import astropy.units as u

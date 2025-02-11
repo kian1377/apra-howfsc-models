@@ -26,20 +26,17 @@ def make_gaussian_inf_fun(act_spacing=300e-6*u.m, sampling=10, coupling=0.15, Na
 
 class DeformableMirror(poppy.AnalyticOpticalElement):
     
-    def __init__(self,
-                 inf_fun,
-                 inf_sampling,
-                 Nact=34,
-                 act_spacing=300e-6*u.m,
-                 shift=np.array([0, 0])*u.m,
-                 max_stroke=1500e-9, 
-                 Nbits=16, 
-                 aperture=None,
-                 include_reflection=True,
-                 act_res=None, 
-                 planetype=poppy.poppy_core.PlaneType.intermediate,
-                 name='DM',
-                ):
+    def __init__(
+            self,
+            inf_fun,
+            inf_sampling,
+            Nact=96,
+            act_spacing=500e-6*u.m,
+            aperture=None,
+            include_reflection=True,
+            planetype=poppy.poppy_core.PlaneType.intermediate,
+            name='DM',
+        ):
         
         self.inf_fun = inf_fun
         self.inf_sampling = inf_sampling
@@ -47,11 +44,7 @@ class DeformableMirror(poppy.AnalyticOpticalElement):
         self.Nact = Nact
         self.act_spacing = act_spacing
         self.include_reflection = include_reflection
-        self.shift = shift
 
-        self.max_stroke = max_stroke
-        self.Nbits = Nbits
-        self.Nvals = 2**Nbits
         self.avail_act_vals = xp.linspace(-self.max_stroke/2, self.max_stroke/2, self.Nvals, dtype=xp.float64)
         self.act_res = self.avail_act_vals[1] - self.avail_act_vals[0]
         self.use_act_res = False

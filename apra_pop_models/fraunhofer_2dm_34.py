@@ -172,7 +172,9 @@ class MODEL():
         if use_vortex:
             lres_wf = utils.pad_or_crop(E_PUP, self.N_vortex_lres) # pad to the larger array for the low res propagation
             fp_wf_lres = props.fft(lres_wf)
+            # can print wf here to see after FFT
             fp_wf_lres *= self.vortex_lres * (1 - self.lres_window) # apply low res FPM and inverse Tukey window
+            # can print wf here to see after FFT
             pupil_wf_lres = props.ifft(fp_wf_lres)
             pupil_wf_lres = utils.pad_or_crop(pupil_wf_lres, self.N)
             if plot: imshows.imshow2(xp.abs(pupil_wf_lres), xp.angle(pupil_wf_lres), 'Vortex FFT WF', npix=1.5*self.npix)

@@ -1,7 +1,7 @@
 from .math_module import xp, xcipy, ensure_np_array
-from adefc_vortex import utils
-from adefc_vortex.imshows import imshow1, imshow2, imshow3
-import adefc_vortex.pwp as pwp
+from apra_pop_models import utils
+from apra_pop_models.imshows import imshow1, imshow2, imshow3
+import apra_pop_models.pwp as pwp
 
 import numpy as np
 from scipy.optimize import minimize

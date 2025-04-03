@@ -10,7 +10,8 @@ __pycache__/
 .vscode/
 
 # Ignore data for the jacobians and saved images
-jacobians/
+*data/
+*jacobians/
 images/
 pupil-data/
 notebooks/test-files/

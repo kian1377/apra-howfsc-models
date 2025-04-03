@@ -1,4 +1,4 @@
-from .math_module import xp, _scipy, ensure_np_array
+from .math_module import xp, xcipy, ensure_np_array
 from . import imshows
 from .utils import pad_or_crop, rotate_arr, interp_arr
 
@@ -55,11 +55,8 @@ def create_annular_focal_plane_mask(npsf, psf_pixelscale,
     mask = (r > irad) * (r < orad)
     if edge is not None: mask *= (x > edge)
     
-    mask = _scipy.ndimage.rotate(mask, rotation, reshape=False, order=0)
-    mask = _scipy.ndimage.shift(mask, (shift[1], shift[0]), order=0)
-    
-    if plot:
-        imshow1(mask)
+    mask = xcipy.ndimage.rotate(mask, rotation, reshape=False, order=0)
+    mask = xcipy.ndimage.shift(mask, (shift[1], shift[0]), order=0)
         
     return mask
 

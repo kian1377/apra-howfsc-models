@@ -56,7 +56,8 @@ class MODEL():
 
         # initialize sampling parameters and load masks
         self.npix = npix
-        self.oversample = 4.096
+        self.oversample = 2.048
+        # self.oversample = 4.096
         self.N = int(self.npix*self.oversample)
 
         pwf = poppy.FresnelWavefront(beam_radius=self.dm_beam_diam/2, npix=self.npix, oversample=1) # pupil wavefront
@@ -154,6 +155,7 @@ class MODEL():
         # Initialize the wavefront
         WFE = utils.pad_or_crop(self.AMP, self.N) * xp.exp(1j * 2*xp.pi/wavelength * utils.pad_or_crop(self.OPD, self.N))
         E_EP = utils.pad_or_crop(self.APERTURE.astype(xp.complex128), self.N) * WFE / xp.sqrt(self.Imax_ref)
+        print(E_EP.shape)
         if plot: imshow2(xp.abs(E_EP), xp.angle(E_EP), 'Entrance Pupil WF', npix=1.5*self.npix)
 
         E_DM1 = E_EP * utils.pad_or_crop(DM1_PHASOR, self.N)

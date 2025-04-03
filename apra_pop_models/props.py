@@ -19,35 +19,57 @@ def fft(arr):
 def ifft(arr):
     return xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(arr)))
 
-def mft_forward(wavefront, npix, npsf, psf_pixelscale_lamD, convention='-', pp_centering='odd', fp_centering='odd'):
+def mft_forward(
+        wavefront, 
+        npix, 
+        npsf, 
+        psf_pixelscale_lamD, 
+        convention='-', 
+        pp_centering='odd', 
+        fp_centering='odd',
+        return_all=False, 
+    ):
     N = wavefront.shape[0]
     dx = 1.0 / npix
     if pp_centering=='even':
         Xs = (xp.arange(N, dtype=float) - (N / 2) + 1/2) * dx
     elif pp_centering=='odd':
         Xs = (xp.arange(N, dtype=float) - (N / 2)) * dx
-
+    
     du = psf_pixelscale_lamD
     if fp_centering=='odd':
         Us = (xp.arange(npsf, dtype=float) - npsf / 2) * du
     elif fp_centering=='even':
         Us = (xp.arange(npsf, dtype=float) - npsf / 2 + 1/2) * du
+    # print(Xs)
+    # print(Us)
 
     xu = xp.outer(Us, Xs)
     vy = xp.outer(Xs, Us)
 
     if convention=='-':
-        My = xp.exp(-1j*2*np.pi*vy) 
+        My = xp.exp(-1j*2*np.pi*vy)
         Mx = xp.exp(-1j*2*np.pi*xu)
     else:
-        My = xp.exp(1j*2*np.pi*vy) 
+        My = xp.exp(1j*2*np.pi*vy)
         Mx = xp.exp(1j*2*np.pi*xu)
 
     norm_coeff = psf_pixelscale_lamD/npix
+    # norm_coeff = psf_pixelscale_lamD/N
+    if return_all:
+        return Mx@wavefront@My * norm_coeff, xu, vy, Mx, My
+    else:
+        return Mx@wavefront@My * norm_coeff
 
-    return Mx@wavefront@My * norm_coeff
-
-def mft_reverse(fpwf, psf_pixelscale_lamD, npix, N, convention='+', pp_centering='odd', fp_centering='odd'):
+def mft_reverse(
+        fpwf, 
+        psf_pixelscale_lamD, 
+        npix, 
+        N, 
+        convention='+', 
+        pp_centering='odd', 
+        fp_centering='odd',
+    ):
 
     npsf = fpwf.shape[0]
     du = psf_pixelscale_lamD
@@ -72,11 +94,12 @@ def mft_reverse(fpwf, psf_pixelscale_lamD, npix, N, convention='+', pp_centering
         My = xp.exp(-1j*2*np.pi*yv) 
         Mx = xp.exp(-1j*2*np.pi*ux)
 
-    norm_coeff = psf_pixelscale_lamD/npix 
+    norm_coeff = psf_pixelscale_lamD/npix
+    # norm_coeff = psf_pixelscale_lamD/N
 
     return Mx@fpwf@My * norm_coeff
 
-def ang_spec(wavefront, wavelength, distance, pixelscale):
+def ang_spec(wavefront, wavelength, distance, pixelscale, return_tf=False):
     """Propagate a wavefront a given distance via the angular spectrum method. 
 
     Parameters
@@ -96,9 +119,14 @@ def ang_spec(wavefront, wavelength, distance, pixelscale):
         the propagated wavefront
     """
     n = wavefront.shape[0]
-
-    delkx = 2*np.pi/(n*pixelscale.to_value(u.m/u.pix))
-    kxy = (xp.linspace(-n/2, n/2-1, n) + 1/2)*delkx
+    # print(n)
+    # print(distance)
+    # print(pixelscale)
+    delkx = 2 * np.pi / ( n * pixelscale.to_value(u.m/u.pix))
+    # print(delkx)
+    kxy = ( xp.linspace(-n/2, n/2-1, n) + 1/2 ) * delkx
+    # print(kxy)
+    # kxy = ( xp.linspace(-n/2, n/2-1, n)) * delkx
     k = 2*np.pi/wavelength.to_value(u.m)
     kx, ky = xp.meshgrid(kxy,kxy)
 
@@ -106,14 +134,16 @@ def ang_spec(wavefront, wavelength, distance, pixelscale):
     wf_as = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(wavefront)))
     
     kz = xp.sqrt(k**2 - kx**2 - ky**2 + 0j)
-    tf = xp.exp(1j*kz*distance.to_value(u.m))
+    tf = xp.exp(1j * kz * distance.to_value(u.m))
 
     prop_wf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(wf_as * tf)))
     # prop_wf = xp.fft.fftshift(xp.fft.ifft2(wf_as * tf))
-    kz = 0.0
-    tf = 0.0
-
-    return prop_wf
+    # kz = 0.0
+    # tf = 0.0
+    if return_tf:
+        return prop_wf, tf
+    else:
+        return prop_wf
 
 def make_vortex_phase_mask(npix, charge=6, 
                            grid='odd', 

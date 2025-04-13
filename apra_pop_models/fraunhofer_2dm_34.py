@@ -42,7 +42,9 @@ class MODEL():
         self.control_rad = 34/2 * 9.6/10.2 * self.lyot_ratio
         self.psf_pixelscale_lamDc = 0.354
         self.psf_pixelscale_lamD = self.psf_pixelscale_lamDc
-        self.npsf = 100
+        # self.npsf = 100
+        self.npsf = 256 # brandon changed!
+
 
         self.wavelength = 650e-9
 
@@ -51,7 +53,8 @@ class MODEL():
         # initialize sampling parameters and load masks
         self.npix = 1000
         self.oversample = 4.096
-        self.N = int(self.npix*self.oversample) # 4096
+        # self.oversample = 1
+        self.N = int(self.npix*self.oversample) # 4096 --> changed to 1000
 
         pwf = poppy.FresnelWavefront(beam_radius=self.pupil_diam/2, npix=self.npix, oversample=1) # pupil wavefront
         self.APERTURE = poppy.CircularAperture(radius=self.pupil_diam/2).get_transmission(pwf)

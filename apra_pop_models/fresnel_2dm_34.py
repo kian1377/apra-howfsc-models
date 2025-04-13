@@ -82,7 +82,8 @@ class CORO():
         self.npix = 1000
         self.oversample = 2.048
         self.N = int(self.npix*self.oversample)
-        self.npsf = 100
+        # self.npsf = 100
+        self.npsf = 256 # brandon changed!
         self.psf_pixelscale = 5e-6*u.m/u.pix
         self.um_per_lamD = (self.wavelength_c*u.m * self.fl_oap9/(self.lyot_diam)).to(u.um)
         self.psf_pixelscale_lamDc = self.psf_pixelscale.to_value(u.um/u.pix)/self.um_per_lamD.value

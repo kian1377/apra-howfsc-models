@@ -282,6 +282,8 @@ def val_and_grad(
     print(f"E_FP_delDMs is of shape {np.shape(E_FP_delDMs)}")
     print(f"E_FP_delDMs is of type {type(E_FP_delDMs)}")
     print(f"with elements of type {type(E_FP_delDMs[0][0])}")
+    imshows.imshow2(xp.abs(E_FP_delDMs), xp.angle(E_FP_delDMs), 'E_A')
+    imshows.imshow2(xp.abs(E_FP_nom), xp.angle(E_FP_nom), 'E_NOM')
 
     # compute the cost function
     delE = E_ab + E_DMs
@@ -289,20 +291,32 @@ def val_and_grad(
     print(f"control_mask is of shape {np.shape(E_FP_delDMs)}")
     print(f"control_mask is of type {type(E_FP_delDMs)}")
     print(f"with elements of type {type(control_mask[0][0])}")
-    
+    imshows.imshow2(xp.abs(delE), xp.angle(delE), 'delE')
     delE_vec = delE[control_mask] # make sure to do array indexing
     print(f"delE_vec, which is delE[control_mask] is of shape {np.shape(delE_vec)}")
     print(f"delE_vec is of type {type(delE_vec)}")
     print(f"with elements of type {type(delE_vec[0])}")
+    print(f"delE_vec first few elements: {delE_vec[:5]}")
+
+    file_path = Path.cwd() / 'debug' / f'{delE_vec}.csv'
+    data = {
+        'real': np.round(delE_vec.real, 4),
+        'imag': np.round(delE_vec.imag, 4)
+    }   
+    df = pd.DataFrame(data)
+    df.to_csv(file_path, index=False)
+    print(f"Saved {delE_vec}")
+
     J_delE = delE_vec.dot(delE_vec.conjugate()).real
     J_c = r_cond * del_acts_waves.dot(del_acts_waves)
-    J = (J_delE + J_c) / E_ab_l2norm
+    J = (J_delE + J_c) #/ E_ab_l2norm
     if verbose: 
         print(f'\tCost-function J_delE: {J_delE:.3f}')
         print(f'\tCost-function J_c: {J_c:.3f}')
         print(f'\tCost-function normalization factor: {E_ab_l2norm:.3f}')
         print(f'\tTotal cost-function value: {J:.3f}\n')
 
+    return
     # Compute the gradient with the adjoint model
     delE_masked = control_mask * delE # still a 2D array
     dJ_dE_DMs = 2 * delE_masked / E_ab_l2norm

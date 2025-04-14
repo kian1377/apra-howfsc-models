@@ -279,10 +279,21 @@ def val_and_grad(
     # E_FP_nom, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(actuators, wavelength, use_vortex=True, return_ints=True,) # make sure to do the array indexing
     E_FP_delDMs, E_EP, E_DM2P, DM1_PHASOR, DM2_PHASOR = M.forward(current_acts+del_acts, wavelength, use_vortex=True, plot=True) # make sure to do the array indexing
     E_DMs = E_FP_delDMs - E_FP_nom
+    print(f"E_FP_delDMs is of shape {np.shape(E_FP_delDMs)}")
+    print(f"E_FP_delDMs is of type {type(E_FP_delDMs)}")
+    print(f"with elements of type {type(E_FP_delDMs[0][0])}")
 
     # compute the cost function
     delE = E_ab + E_DMs
+    print(f"delE = E_ab + (E_FP_delDMs - E_FP_nom)")
+    print(f"control_mask is of shape {np.shape(E_FP_delDMs)}")
+    print(f"control_mask is of type {type(E_FP_delDMs)}")
+    print(f"with elements of type {type(control_mask[0][0])}")
+    
     delE_vec = delE[control_mask] # make sure to do array indexing
+    print(f"delE_vec, which is delE[control_mask] is of shape {np.shape(delE_vec)}")
+    print(f"delE_vec is of type {type(delE_vec)}")
+    print(f"with elements of type {type(delE_vec[0])}")
     J_delE = delE_vec.dot(delE_vec.conjugate()).real
     J_c = r_cond * del_acts_waves.dot(del_acts_waves)
     J = (J_delE + J_c) / E_ab_l2norm

@@ -71,7 +71,10 @@ def mft_reverse(fpwf, psf_pixelscale_lamD, npix, N, convention='+', pp_centering
 
     if convention=='+':
         My = xp.exp(1j*2*np.pi*yv) 
+        print(f"My's shape is {np.shape(My)}")
         Mx = xp.exp(1j*2*np.pi*ux)
+        print(f"Mx's shape is {np.shape(Mx)}")
+
     else:
         My = xp.exp(-1j*2*np.pi*yv) 
         Mx = xp.exp(-1j*2*np.pi*ux)

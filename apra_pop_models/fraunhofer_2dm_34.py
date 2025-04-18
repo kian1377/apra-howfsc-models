@@ -157,7 +157,7 @@ class MODEL():
         print(f"self.AMP is shape {np.shape(self.AMP)}")
         print(f"self.N is {self.N}")
 
-        E_EP = utils.pad_or_crop(self.APERTURE.astype(xp.complex128), self.N) * WFE / xp.sqrt(self.Imax_ref)
+        E_EP = utils.pad_or_crop(self.APERTURE.astype(xp.complex128), self.N) * WFE #/ xp.sqrt(self.Imax_ref)
         if plot: imshows.imshow2(xp.abs(E_EP), xp.angle(E_EP), 'Entrance Pupil WF', npix=1.5*self.npix)
 
         E_DM1 = E_EP * utils.pad_or_crop(DM1_PHASOR, self.N)
@@ -170,6 +170,7 @@ class MODEL():
         if plot: imshows.imshow2(xp.abs(E_DM2), xp.angle(E_DM2), 'After DM2 WF', npix=1.5*self.npix)
 
         E_PUP = props.ang_spec(E_DM2, self.wavelength*u.m, -self.d_dm1_dm2, self.dm_pxscl)
+        print(f"shape of E_PUP is {np.shape(E_PUP)}")
         if plot: imshows.imshow2(xp.abs(E_PUP), xp.angle(E_PUP), 'Back to Pupil WF', npix=1.5*self.npix)
 
         if use_vortex:
@@ -309,23 +310,38 @@ def val_and_grad(
 
     J_delE = delE_vec.dot(delE_vec.conjugate()).real
     J_c = r_cond * del_acts_waves.dot(del_acts_waves)
-    J = (J_delE + J_c) #/ E_ab_l2norm
+    J = (J_delE + J_c) / E_ab_l2norm
     if verbose: 
         print(f'\tCost-function J_delE: {J_delE:.3f}')
         print(f'\tCost-function J_c: {J_c:.3f}')
         print(f'\tCost-function normalization factor: {E_ab_l2norm:.3f}')
         print(f'\tTotal cost-function value: {J:.3f}\n')
 
-    return
     # Compute the gradient with the adjoint model
     delE_masked = control_mask * delE # still a 2D array
     dJ_dE_DMs = 2 * delE_masked / E_ab_l2norm
 
     psf_pixelscale_lamD = M.psf_pixelscale_lamDc * M.wavelength_c/wavelength
     dJ_dE_LS = props.mft_reverse(dJ_dE_DMs, psf_pixelscale_lamD, M.npix * M.lyot_ratio, M.N, convention='+')
+    print(f"psf_pixelscale_lamD is {psf_pixelscale_lamD}")
+    print(f"M.npix is {M.npix}")
+    print(f"M.lyot_ratio is {M.lyot_ratio}")
+    print(f"M.N is {M.N}")
+    print(f"shape of dJ_dE_LS is {np.shape(dJ_dE_LS)}")
+
     if plot: imshows.imshow2(xp.abs(dJ_dE_LS), xp.angle(dJ_dE_LS), 'RMAD Lyot Stop', npix=1.5*M.npix)
 
-    dJ_dE_LP = dJ_dE_LS * utils.pad_or_crop(M.LYOT, M.N)
+    print(f"M.LYOT is shape {np.shape(M.LYOT)}")
+    print(f"M.LYOT has elements of type {type(M.LYOT[0][0])}")
+
+    dJ_dE_LP = dJ_dE_LS * utils.pad_or_crop(M.LYOT, M.N) # change from M.N into M.LYOT dimension
+    print(f"shape of dJ_dE_LP is {np.shape(dJ_dE_LP)}")
+    if plot: imshows.imshow2(xp.abs(dJ_dE_LP), xp.angle(dJ_dE_LP), 'dJ_dE_LP', npix=1.5*M.npix)
+
+    # pad or crop( arr_in, npix ): so M.LYOT is an array that gets cropped to 4096x4096,
+    # then that array is element-wise multiplied with dJ_dE_LS
+
+
     if M.flip_lyot: 
         # dJ_dE_LP2 = xp.rot90(xp.rot90(dJ_dE_LP))
         dJ_dE_LP = xp.rot90(xp.rot90(dJ_dE_LP))
@@ -334,8 +350,14 @@ def val_and_grad(
     # Now we have to split and back-propagate the gradient along the two branches used to model 
     # the vortex. So one branch for the FFT vortex procedure and one for the MFT vortex procedure. 
     # dJ_dE_LP_fft = utils.pad_or_crop(copy.copy(dJ_dE_LP2), M.N_vortex_lres)
+    print(f"M.N_vortex_lres is {M.N_vortex_lres}")
     dJ_dE_LP_fft = utils.pad_or_crop(copy.copy(dJ_dE_LP), M.N_vortex_lres)
+    print(f"shape of dJ_dE_LP_fft is {np.shape(dJ_dE_LP_fft)}")
+
     dJ_dE_FPM_fft = props.fft(dJ_dE_LP_fft)
+    print(f"shape of dJ_dE_FPM_fft is {np.shape(dJ_dE_FPM_fft)}")
+
+    print(f"M.lres_window is {M.lres_window}")
     dJ_dE_FP_fft = M.vortex_lres.conjugate() * (1 - M.lres_window) * dJ_dE_FPM_fft
     dJ_dE_PUP_fft = props.ifft(dJ_dE_FP_fft)
     # dJ_dE_PUP_fft2 = utils.pad_or_crop(dJ_dE_PUP_fft, M.N)
@@ -454,12 +476,12 @@ def val_and_grad(
         # Handle complex data
         elif np.iscomplexobj(np_matrix):
             data = {
-                'real': np.round(np_matrix.real, 4),
-                'imag': np.round(np_matrix.imag, 4)
+                'real': np.round(np_matrix.real, 5),
+                'imag': np.round(np_matrix.imag, 5)
             }
         # Handle regular numeric data
         else:
-            data = {'real': np.round(np_matrix, 4)}
+            data = {'real': np.round(np_matrix, 7)}
             
         df = pd.DataFrame(data)
         df.to_csv(file_path, index=False)

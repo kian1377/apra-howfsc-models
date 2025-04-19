@@ -136,6 +136,7 @@ class MODEL():
         dm1_command[self.dm_mask] = xp.array(actuators[:self.Nacts//2])
         dm1_mft = self.Mx@dm1_command@self.My
         dm1_surf_fft = self.inf_fun_fft * dm1_mft
+        print(f"type of elements in dm1_surf_fft is {type(dm1_surf_fft[0][0])}")
         dm1_surf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(dm1_surf_fft,))).real
         dm1_surf = utils.pad_or_crop(dm1_surf, self.N)
         DM1_PHASOR = xp.exp(1j * 4*xp.pi/wavelength * dm1_surf) # 4096 x 4096
@@ -384,6 +385,7 @@ def val_and_grad(
     if plot: imshows.imshow2(xp.abs(dJ_dE_DM1), xp.angle(dJ_dE_DM1), 'RMAD DM1 WF', npix=1.5*M.npix)
 
     dJ_dS_DM2 = 4*xp.pi/M.wavelength * xp.imag(dJ_dE_DM2 * E_DM2P.conj() * DM2_PHASOR.conj())
+    print(f"type of dJ_dS_DM2 is {type(dJ_dS_DM2)}")
     dJ_dS_DM1 = 4*xp.pi/M.wavelength * xp.imag(dJ_dE_DM1 * E_EP.conj() * DM1_PHASOR.conj())
     if M.flip_dm: 
         dJ_dS_DM1 = xp.rot90(xp.rot90(dJ_dS_DM1))
@@ -393,21 +395,35 @@ def val_and_grad(
 
     # Now pad back to the array size fo the DM surface to back propagate through the adjoint DM model
     dJ_dS_DM2 = utils.pad_or_crop(dJ_dS_DM2, M.Nsurf)
-    x2_bar = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM2)))
-    x1_bar = x2_bar * M.inf_fun_fft.conj()
-    dJ_dA2 = M.Mx_back@x1_bar@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
+    x2_bar_2 = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM2)))
+    print(f"type of x2_bar_2 elements is {type(x2_bar_2[0][0])}")
+    x1_bar_2 = x2_bar_2 * M.inf_fun_fft.conj()
+    print(f"type of x1_bar_2 is {type(x1_bar_2[0][0])}")
+    print(f"shape of x1_bar_2 is {np.shape(x1_bar_2)}")
+    dJ_dA2 = M.Mx_back@x1_bar_2@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
+    print(f"type of dJ_dA2 is {type(dJ_dA2)}")
+    print(f"shape of dJ_dA2 is {np.shape(dJ_dA2[0][0])}")
     if plot: imshows.imshow2(dJ_dA2.real, dJ_dA2.imag, 'RMAD DM2 Actuators')
 
     dJ_dS_DM1 = utils.pad_or_crop(dJ_dS_DM1, M.Nsurf)
     # x2_bar2 = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM1_rot2)))
-    x2_bar = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM1)))
+    x2_bar_1 = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM1)))
     # x1_bar2 = x2_bar2 * M.inf_fun_fft.conj()
-    x1_bar = x2_bar * M.inf_fun_fft.conj()
-    dJ_dA1 = M.Mx_back@x1_bar@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
+    x1_bar_1 = x2_bar_1 * M.inf_fun_fft.conj()
+    dJ_dA1 = M.Mx_back@x1_bar_1@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
     if plot: imshows.imshow2(dJ_dA1.real, dJ_dA1.imag, 'RMAD DM1 Actuators')
 
     dJ_dA = xp.concatenate([dJ_dA1[M.dm_mask].real, dJ_dA2[M.dm_mask].real]) + xp.array( r_cond * 2*del_acts_waves )
-
+    print(f"type of dJ_dA1 is {type(dJ_dA1[0][0])}")
+    print(f"shape of dJ_dA1 is {np.shape(dJ_dA1)}")
+    print(f"type of dJ_dA1[M.dm_mask] is {type(dJ_dA1[M.dm_mask][0])}")
+    print(f"shape of dJ_dA1[M.dm_mask] is {np.shape(dJ_dA1[M.dm_mask])}")
+    print(f"type of dJ_dA1[M.dm_mask].real is {type(dJ_dA1[M.dm_mask].real[0])}")
+    print(f"shape of dJ_dA1[M.dm_mask].real is {np.shape(dJ_dA1[M.dm_mask].real)}")
+    print(f"type of xp.concatenate([dJ_dA1[M.dm_mask].real, dJ_dA2[M.dm_mask].real]) is {type(xp.concatenate([dJ_dA1[M.dm_mask].real, dJ_dA2[M.dm_mask].real]))[0]}")
+    print(f"shape of xp.concatenate([dJ_dA1[M.dm_mask].real, dJ_dA2[M.dm_mask].real]) is {np.shape(xp.concatenate([dJ_dA1[M.dm_mask].real, dJ_dA2[M.dm_mask].real]))}")
+    print(f"type of xp.array( r_cond * 2*del_acts_waves ) is {type(xp.array( r_cond * 2*del_acts_waves ))[0]}")
+    print(f"shape of xp.array( r_cond * 2*del_acts_waves ) is {np.shape(xp.array( r_cond * 2*del_acts_waves ))}")
     if fancy_plot: 
         imshows.fancy_plot_adjoint(dJ_dE_DMs, dJ_dE_LP, dJ_dE_PUP, dJ_dS_DM1, dJ_dS_DM2, dJ_dA1, dJ_dA2, control_mask)
 
@@ -456,11 +472,11 @@ def val_and_grad(
         # 'dJ_dS_DM1_rot': dJ_dS_DM1_rot,
         # 'dJ_dS_DM2_rot2': dJ_dS_DM2_rot2,
         # 'dJ_dS_DM1_rot2': dJ_dS_DM1_rot2,
-        'x2_bar': x2_bar,
-        'x1_bar': x1_bar,
+        'x2_bar_2': x2_bar_2,
+        'x1_bar_2': x1_bar_2,
         'dJ_dA2': dJ_dA2,
-        # 'x2_bar2': x2_bar2,
-        # 'x1_bar2': x1_bar2,
+        'x2_bar_1': x2_bar_1,
+        'x1_bar_1': x1_bar_1,
         'dJ_dA1': dJ_dA1,
         # 'dJ_dS_DM1_rot2': dJ_dS_DM1_rot2,
         'dJ_dA': dJ_dA

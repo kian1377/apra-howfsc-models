@@ -80,7 +80,8 @@ class MODEL():
         y,x = (xp.indices((self.Nact, self.Nact)) - self.Nact//2 + 1/2)
         r = xp.sqrt(x**2 + y**2)
         self.dm_mask = r<(self.Nact/2 + 1/2)
-        # print(f"dm_mask is {self.dm_mask}")
+        print(f"dm_mask elements are of type {type(self.dm_mask[0][0])}")
+        print(f"dm_mask is of shape {np.shape(self.dm_mask)}")
 
         self.Nacts = int(2*self.dm_mask.sum())
         print(f"Nacts is {self.Nacts}")
@@ -413,6 +414,10 @@ def val_and_grad(
     dJ_dA1 = M.Mx_back@x1_bar_1@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
     if plot: imshows.imshow2(dJ_dA1.real, dJ_dA1.imag, 'RMAD DM1 Actuators')
 
+    dJ_dA1_masked_real = dJ_dA1[M.dm_mask].real
+    dJ_dA2_masked_real = dJ_dA2[M.dm_mask].real
+    cat = xp.concatenate([dJ_dA1[M.dm_mask].real, dJ_dA2[M.dm_mask].real])
+
     dJ_dA = xp.concatenate([dJ_dA1[M.dm_mask].real, dJ_dA2[M.dm_mask].real]) + xp.array( r_cond * 2*del_acts_waves )
     print(f"type of dJ_dA1 is {type(dJ_dA1[0][0])}")
     print(f"shape of dJ_dA1 is {np.shape(dJ_dA1)}")
@@ -479,6 +484,9 @@ def val_and_grad(
         'x1_bar_1': x1_bar_1,
         'dJ_dA1': dJ_dA1,
         # 'dJ_dS_DM1_rot2': dJ_dS_DM1_rot2,
+        'dJ_dA1_masked_real': dJ_dA1_masked_real,
+        'dJ_dA2_masked_real': dJ_dA2_masked_real,
+        'cat': cat,
         'dJ_dA': dJ_dA
     }
 

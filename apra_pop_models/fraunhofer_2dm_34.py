@@ -385,6 +385,9 @@ def val_and_grad(
     dJ_dE_DM1 = props.ang_spec(dJ_dE_DM2P, M.wavelength*u.m, -M.d_dm1_dm2, M.dm_pxscl)
     if plot: imshows.imshow2(xp.abs(dJ_dE_DM1), xp.angle(dJ_dE_DM1), 'RMAD DM1 WF', npix=1.5*M.npix)
 
+    dJ_dE_DM2_time_E_DM2P_conj = dJ_dE_DM2 * E_DM2P.conj()
+    temp_time_DM2_PHASOR_conj = dJ_dE_DM2 * E_DM2P.conj() * DM2_PHASOR.conj()
+    temp_imag = xp.imag(dJ_dE_DM2 * E_DM2P.conj() * DM2_PHASOR.conj())
     dJ_dS_DM2 = 4*xp.pi/M.wavelength * xp.imag(dJ_dE_DM2 * E_DM2P.conj() * DM2_PHASOR.conj())
     print(f"type of dJ_dS_DM2 is {type(dJ_dS_DM2)}")
     dJ_dS_DM1 = 4*xp.pi/M.wavelength * xp.imag(dJ_dE_DM1 * E_EP.conj() * DM1_PHASOR.conj())
@@ -403,7 +406,7 @@ def val_and_grad(
     print(f"shape of x1_bar_2 is {np.shape(x1_bar_2)}")
     dJ_dA2 = M.Mx_back@x1_bar_2@M.My_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
     print(f"type of dJ_dA2 is {type(dJ_dA2)}")
-    print(f"shape of dJ_dA2 is {np.shape(dJ_dA2[0][0])}")
+    print(f"shape of dJ_dA2 is {np.shape(dJ_dA2)}")
     if plot: imshows.imshow2(dJ_dA2.real, dJ_dA2.imag, 'RMAD DM2 Actuators')
 
     dJ_dS_DM1 = utils.pad_or_crop(dJ_dS_DM1, M.Nsurf)
@@ -487,7 +490,11 @@ def val_and_grad(
         'dJ_dA1_masked_real': dJ_dA1_masked_real,
         'dJ_dA2_masked_real': dJ_dA2_masked_real,
         'cat': cat,
-        'dJ_dA': dJ_dA
+        'dJ_dA': dJ_dA,
+        'inf_fun_fft': M.inf_fun_fft,
+        'dJ_dE_DM2_time_E_DM2P_conj': dJ_dE_DM2_time_E_DM2P_conj,
+        'temp_time_DM2_PHASOR_conj': temp_time_DM2_PHASOR_conj,
+        'temp_imag': temp_imag
     }
 
     # N = 10  # adjust based on your needs
